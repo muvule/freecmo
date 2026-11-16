@@ -118,15 +118,21 @@ class TestConnectors(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 gate.execute_write("act-1", "sub-1", "app-1", payload, {"bid_cap": 10.0}, now=now)
 
-            # Fresh validator passes, single-use nonce prevents replay, rollback restores state
+            # Reviewer revocation overrides earlier approval
             gate.record_validator_pass("sub-1", payload, timestamp=now - timedelta(minutes=5))
+            gate.record_reviewer_approval("sub-1", payload, approved=False, timestamp=now + timedelta(seconds=1))
+            with self.assertRaises(PermissionError):
+                gate.execute_write("act-revoked", "sub-1", "app-1", payload, {"bid_cap": 10.0}, now=now + timedelta(seconds=2))
+
+            # Re-approve and verify single-use nonce + rollback
+            gate.record_reviewer_approval("sub-1", payload, approved=True, timestamp=now + timedelta(seconds=3))
             target = root / "config.json"
             target.write_text('{"bid_cap": 10.0}', encoding="utf-8")
-            res = gate.execute_write("act-1", "sub-1", "app-1", payload, {"bid_cap": 10.0}, target_file=target, now=now)
+            res = gate.execute_write("act-1", "sub-1", "app-1", payload, {"bid_cap": 10.0}, target_file=target, now=now + timedelta(seconds=4))
             self.assertEqual(res["status"], "executed")
 
             with self.assertRaises(PermissionError):
-                gate.execute_write("act-2", "sub-1", "app-1", payload, {"bid_cap": 12.0}, target_file=target, now=now)
+                gate.execute_write("act-2", "sub-1", "app-1", payload, {"bid_cap": 12.0}, target_file=target, now=now + timedelta(seconds=5))
 
             rb = gate.rollback("act-1")
             self.assertEqual(rb["status"], "rolled_back")

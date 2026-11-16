@@ -185,7 +185,7 @@ class ApprovalGate:
                 ev_time = datetime.fromisoformat(e["timestamp"])
                 if ev_time.tzinfo is None:
                     ev_time = ev_time.replace(tzinfo=timezone.utc)
-                if ev_time >= cutoff:
+                if cutoff <= ev_time <= current_time:
                     validator_ok = True
                 break
         if not validator_ok:
@@ -193,14 +193,16 @@ class ApprovalGate:
                 f"No fresh Validator pass (<={self.ttl_minutes}m) matching payload sha256 {digest[:12]}"
             )
 
-        # Verify Reviewer approval on exact payload digest
-        reviewer_ok = any(
-            e.get("event_type") == "reviewer_decision"
-            and e.get("subtask_id") == subtask_id
-            and e.get("payload_sha256") == digest
-            and e.get("approved") is True
-            for e in events
-        )
+        # Verify most recent Reviewer decision on exact payload digest is approved=True
+        reviewer_ok = False
+        for e in reversed(events):
+            if (
+                e.get("event_type") == "reviewer_decision"
+                and e.get("subtask_id") == subtask_id
+                and e.get("payload_sha256") == digest
+            ):
+                reviewer_ok = e.get("approved") is True
+                break
         if not reviewer_ok:
             raise PermissionError("Missing Reviewer approved=true for exact payload hash")
 
@@ -215,10 +217,12 @@ class ApprovalGate:
         if not composer_ok:
             raise PermissionError(f"Missing Composer signoff for approval_id={approval_id}")
 
-        # Write pre-mutation rollback snapshot
+        # Write pre-mutation rollback snapshot without overwriting an existing action_id snapshot
         snap_path = (self.rollbacks_dir / f"{action_id}.json").resolve()
         if not snap_path.is_relative_to(self.rollbacks_dir):
             raise ValueError("Rollback snapshot path escapes rollbacks_dir")
+        if snap_path.exists():
+            raise FileExistsError(f"Rollback snapshot already exists for action_id={action_id}")
 
         snapshot = {
             "action_id": action_id,
