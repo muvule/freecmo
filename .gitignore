@@ -1,0 +1,31 @@
+# Environment & local secrets
+.env
+.env.*
+!.env.example
+mcp_config.json
+
+# Runtime state, raw exports, offloads, rollbacks, and SQLite radar
+data/exports/*
+!data/exports/.gitkeep
+data/offload/*
+!data/offload/.gitkeep
+data/rollbacks/*
+!data/rollbacks/.gitkeep
+data/radar.db
+data/radar.db-wal
+data/radar.db-shm
+.agents/brand-truth.md
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp

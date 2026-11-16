@@ -1,0 +1,9 @@
+{
+  "name": "freecmo",
+  "version": "0.1.0",
+  "description": "Open-source SMB CMO Agent Harness with deterministic calculators, temporal approval gates, and Agent Skills compliance.",
+  "license": "MIT",
+  "entrypoint": "./AGENTS.md",
+  "skills_dir": "./.agents/skills",
+  "schemas_dir": "./schemas"
+}

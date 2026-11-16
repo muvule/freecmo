@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freecmo.org/schemas/subtask_spec.schema.json",
+  "title": "SubtaskDispatchSpec",
+  "type": "object",
+  "required": [
+    "subtask_id",
+    "skill_names",
+    "model_tier",
+    "max_tool_calls",
+    "max_tokens_budget",
+    "requires_reviewer",
+    "data_slice_pointers",
+    "file_touch_boundaries",
+    "goal"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "subtask_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "skill_names": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      }
+    },
+    "model_tier": {
+      "type": "string",
+      "enum": [
+        "fast_decider",
+        "balanced_worker",
+        "deep_orchestrator",
+        "multimodal_creative"
+      ]
+    },
+    "max_tool_calls": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 6
+    },
+    "max_tokens_budget": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 64000,
+      "default": 16000
+    },
+    "requires_reviewer": {
+      "type": "boolean"
+    },
+    "is_production_mutation": {
+      "type": "boolean",
+      "default": false
+    },
+    "data_slice_pointers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "file_touch_boundaries": {
+      "type": "object",
+      "required": ["allowed_paths", "forbidden_paths"],
+      "additionalProperties": false,
+      "properties": {
+        "allowed_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "forbidden_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 10
+    },
+    "disproof_condition": {
+      "type": "string",
+      "minLength": 5
+    },
+    "created_at": {
+      "type": "string"
+    }
+  }
+}

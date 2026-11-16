@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freecmo.org/schemas/storyboard.schema.json",
+  "title": "TimedVisualStoryboard",
+  "type": "object",
+  "required": [
+    "storyboard_id",
+    "aspect_ratio",
+    "visual_dna_ref",
+    "palette_hex",
+    "hook_angle",
+    "timed_beats",
+    "cta_text",
+    "source_receipt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "storyboard_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": ["9:16", "1:1", "16:9"]
+    },
+    "visual_dna_ref": {
+      "type": "string",
+      "const": ".agents/visual-dna.json"
+    },
+    "palette_hex": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "string",
+        "pattern": "^#[0-9A-Fa-f]{6}$"
+      }
+    },
+    "hook_angle": {
+      "type": "string",
+      "minLength": 5
+    },
+    "timed_beats": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["beat_role", "start_sec", "end_sec", "visual_frame", "spoken_or_overlay_copy"],
+        "additionalProperties": false,
+        "properties": {
+          "beat_role": {
+            "type": "string",
+            "enum": ["hook", "proof", "cta"]
+          },
+          "start_sec": { "type": "number", "minimum": 0 },
+          "end_sec": { "type": "number", "minimum": 1 },
+          "visual_frame": { "type": "string", "minLength": 5 },
+          "spoken_or_overlay_copy": { "type": "string", "minLength": 3 }
+        }
+      }
+    },
+    "cta_text": {
+      "type": "string",
+      "minLength": 3
+    },
+    "source_receipt": {
+      "type": "string",
+      "minLength": 3
+    }
+  }
+}

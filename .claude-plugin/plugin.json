@@ -1,0 +1,12 @@
+{
+  "name": "freecmo",
+  "version": "0.1.0",
+  "description": "Open-source SMB CMO Agent Harness: Composer -> Orchestrator -> Ephemeral Subtask Pipeline with deterministic calculators, falsifiable bets, and Agent Skills compliance.",
+  "license": "MIT",
+  "skills": "./.agents/skills",
+  "instructions": "./AGENTS.md",
+  "commands": {
+    "cmo-init": "./skills/core/cmo-init/SKILL.md",
+    "weekly-cmo-brief": "./skills/core/weekly-cmo-brief/SKILL.md"
+  }
+}

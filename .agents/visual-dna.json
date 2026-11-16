@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "brand_name": "Your Brand",
+  "extraction_status": "draft_pending_review",
+  "palette": {
+    "primary_hex": "#111827",
+    "secondary_hex": "#2563EB",
+    "accent_hex": "#10B981",
+    "background_hex": "#FFFFFF",
+    "text_hex": "#111827"
+  },
+  "typography": {
+    "heading_font": "Inter",
+    "body_font": "Inter",
+    "tone": "clean_editorial"
+  },
+  "imagery_style": {
+    "preferred": [
+      "real product UI screenshots",
+      "authentic founder/team workspace photos",
+      "high-contrast data charts with source labels"
+    ],
+    "forbidden_visual_tropes": [
+      "generic glowing AI brains",
+      "stock handshake photos",
+      "unreadable text-over-busy-background thumbnails",
+      "fake countdown timers"
+    ]
+  },
+  "aspect_ratio_specs": {
+    "9:16": {
+      "platforms": ["tiktok", "youtube_shorts", "instagram_reels"],
+      "safe_zone": "Keep text within center 75% vertical band; avoid bottom 20% caption overlay.",
+      "max_duration_sec": 30
+    },
+    "1:1": {
+      "platforms": ["instagram_feed", "linkedin_carousel", "meta_feed"],
+      "safe_zone": "Minimum 48px margin; single focal metric or product frame.",
+      "max_duration_sec": 15
+    },
+    "16:9": {
+      "platforms": ["youtube", "linkedin_video", "landing_page_hero"],
+      "safe_zone": "Left-aligned headline <= 7 words; caption-ready lower third.",
+      "max_duration_sec": 60
+    }
+  }
+}

@@ -1,0 +1,47 @@
+version: 1
+autonomy_envelope:
+  strategy_lock_required: true
+  default_google_ads_validate_only: true
+  default_meta_ads_status: PAUSED
+  max_weekly_brief_decisions: 5
+  approval_ttl_minutes: 60
+  max_budget_shift_pct_without_confirm: 15
+  max_daily_spend_cap_usd: 500
+  max_single_experiment_spend_usd: 300
+
+protected_relationships:
+  vip_domains:
+    - example-investor.com
+    - key-partner.org
+  vip_contacts_csv: data/vip_contacts.csv
+  never_cold_pitch_segments:
+    - active_customers
+    - investors
+    - advisors
+    - event_speakers
+    - press_tier1
+
+stop_loss_rules:
+  - id: stop_loss_paid_roas_14d
+    channel: paid_social
+    condition: "roas < 1.0 after_days >= 14 and spend >= 150"
+    action: stage_pause
+  - id: stop_loss_search_cpa_7d
+    channel: paid_search
+    condition: "conversions == 0 after_days >= 7 and spend >= 2.0x allowable_cac_usd"
+    action: stage_pause
+
+organic_paid_rules:
+  paid_to_seo_min_conversions: 3
+  social_to_paid_min_median_multiplier: 2.0
+  seo_cannibalization_max_organic_pos: 2
+  seo_cannibalization_max_competitor_is_pct: 5.0
+
+compliance:
+  require_ftc_community_disclosure: true
+  community_disclosure_template: "(Disclosure: I built/work on {brand_name})"
+  block_ai_slop_phrases:
+    - "delve into"
+    - "in today's fast-paced digital landscape"
+    - "game-changer"
+    - "unlock your full potential"

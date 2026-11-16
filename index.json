@@ -1,0 +1,240 @@
+{
+  "active_runtime_skills": 16,
+  "publication_holds": [],
+  "schema_version": "1.0.0",
+  "skills": [
+    {
+      "calculators": [
+        "experiment_math"
+      ],
+      "category": "social",
+      "description": "Build visual-dna timed storyboards (0-4s/4-10s/CTA) and falsifiable ad angles from winners.",
+      "last_updated": "2026-11-16",
+      "name": "ad-creative-angle-matrix",
+      "package": "social",
+      "source_path": "skills/social/ad-creative-angle-matrix/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "experiment_math",
+        "budget_gate"
+      ],
+      "category": "search-organic",
+      "description": "Score 10-prompt AI citation share, entity gaps, and answer-first page priorities for GEO/AEO.",
+      "last_updated": "2026-11-16",
+      "name": "aeo-entity-readiness",
+      "package": "search",
+      "source_path": "skills/search-organic/aeo-entity-readiness/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "mer"
+      ],
+      "category": "analytics",
+      "description": "Reconcile blended MER, separate branded vs non-branded ROAS, and evaluate stop-loss triggers.",
+      "last_updated": "2026-11-16",
+      "name": "blended-mer-reconciler",
+      "package": "core",
+      "source_path": "skills/analytics/blended-mer-reconciler/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "cac_ltv",
+        "budget_gate"
+      ],
+      "category": "core",
+      "description": "Initialize brand-truth.md and visual-dna.json from URL or repo with draft_pending_review lock.",
+      "last_updated": "2026-11-16",
+      "name": "cmo-init",
+      "package": "core",
+      "source_path": "skills/core/cmo-init/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "experiment_math"
+      ],
+      "category": "social",
+      "description": "Mine Reddit, HN, and forums in FTS5 radar.db for pain clusters with mandatory FTC disclosures.",
+      "last_updated": "2026-11-16",
+      "name": "community-pain-radar",
+      "package": "social",
+      "source_path": "skills/social/community-pain-radar/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "mer",
+        "experiment_math"
+      ],
+      "category": "lifecycle-cro",
+      "description": "Audit SPF/DKIM/DMARC sender health, retention flow ROI, and VIP relationship exclusions.",
+      "last_updated": "2026-11-16",
+      "name": "email-deliverability-flows",
+      "package": "lifecycle",
+      "source_path": "skills/lifecycle-cro/email-deliverability-flows/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "cac_ltv"
+      ],
+      "category": "search-paid",
+      "description": "Audit SMB Google Ads campaigns for budget floors, conversion volume, and auto-apply traps.",
+      "last_updated": "2026-11-16",
+      "name": "google-ads-smb-audit",
+      "package": "search",
+      "source_path": "skills/search-paid/google-ads-smb-audit/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "experiment_math",
+        "budget_gate"
+      ],
+      "category": "search-organic",
+      "description": "Triage Google Search Console query impression/position drift and paid-SEO cannibalization.",
+      "last_updated": "2026-11-16",
+      "name": "gsc-query-drift-triage",
+      "package": "search",
+      "source_path": "skills/search-organic/gsc-query-drift-triage/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "experiment_math"
+      ],
+      "category": "lifecycle-cro",
+      "description": "Audit landing page speed, above-the-fold CTA clarity, offer friction, and A/B test power.",
+      "last_updated": "2026-11-16",
+      "name": "landing-page-cro-audit",
+      "package": "lifecycle",
+      "source_path": "skills/lifecycle-cro/landing-page-cro-audit/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "experiment_math"
+      ],
+      "category": "search-organic",
+      "description": "Optimize Google Business Profile categories, LocalBusiness schema, and review velocity.",
+      "last_updated": "2026-11-16",
+      "name": "local-seo-gbp-optimizer",
+      "package": "search",
+      "source_path": "skills/search-organic/local-seo-gbp-optimizer/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "mer"
+      ],
+      "category": "social",
+      "description": "Audit Meta Ads spend floors, Advantage+ defaults, CAPI deduplication, and 14-day stop-losses.",
+      "last_updated": "2026-11-16",
+      "name": "meta-ads-smb-audit",
+      "package": "social",
+      "source_path": "skills/social/meta-ads-smb-audit/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "ngram_waste"
+      ],
+      "category": "search-paid",
+      "description": "Mine Google Ads search term reports via n-gram clustering to cut zero-conversion waste spend.",
+      "last_updated": "2026-11-16",
+      "name": "search-term-negative-miner",
+      "package": "search",
+      "source_path": "skills/search-paid/search-term-negative-miner/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "experiment_math"
+      ],
+      "category": "search-organic",
+      "description": "Stage isolated git branch PRs adding canonicals, meta tags, FAQPage JSON-LD, and AI robots.txt.",
+      "last_updated": "2026-11-16",
+      "name": "seo-geo-code-pr",
+      "package": "search",
+      "source_path": "skills/search-organic/seo-geo-code-pr/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "experiment_math"
+      ],
+      "category": "social",
+      "description": "Turn /cmo run-with-this assets and customer wins into visual-dna social SEO & storyboard drafts.",
+      "last_updated": "2026-11-16",
+      "name": "social-seo-repurposer",
+      "package": "social",
+      "source_path": "skills/social/social-seo-repurposer/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "experiment_math"
+      ],
+      "category": "analytics",
+      "description": "Verify GA4, pixel, server-side conversion integrity, site speed, and budget gate prerequisites.",
+      "last_updated": "2026-11-16",
+      "name": "tracking-health-audit",
+      "package": "core",
+      "source_path": "skills/analytics/tracking-health-audit/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "cac_ltv"
+      ],
+      "category": "core",
+      "description": "Compute allowable CAC, break-even ROAS, payback months, and cohort LTV floors before spend.",
+      "last_updated": "2026-11-16",
+      "name": "unit-economics-floors",
+      "package": "core",
+      "source_path": "skills/core/unit-economics-floors/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "mer",
+        "experiment_math"
+      ],
+      "category": "core",
+      "description": "Synthesize weekly shift ledger, stop-losses, and cohort reallocations into max 5 Composer decisions.",
+      "last_updated": "2026-11-16",
+      "name": "weekly-cmo-brief",
+      "package": "core",
+      "source_path": "skills/core/weekly-cmo-brief/SKILL.md",
+      "status": "active",
+      "tier": 1
+    }
+  ],
+  "total_source_skills": 17
+}

@@ -1,0 +1,8 @@
+{
+  "name": "freecmo",
+  "version": "0.1.0",
+  "description": "Open-source SMB CMO Agent Harness for Antigravity and Gemini CLI.",
+  "contextFileName": "GEMINI.md",
+  "skillsDir": ".agents/skills",
+  "mcpServers": "./mcp_config.json.example"
+}

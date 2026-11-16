@@ -1,0 +1,55 @@
+{
+  "_comment": "Lazy-loaded Tier 1 read-only MCP presets. Copy to mcp_config.json and configure credentials via environment variables. Tier 0 works offline with CSVs in data/exports/.",
+  "mcpServers": {
+    "ga4-readonly": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-google-analytics"],
+      "env": {
+        "GA4_PROPERTY_ID": "${GA4_PROPERTY_ID}"
+      },
+      "readOnly": true,
+      "lazyLoad": true,
+      "disabled": true
+    },
+    "gsc-readonly": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-google-search-console"],
+      "env": {
+        "GSC_SITE_URL": "${GSC_SITE_URL}"
+      },
+      "readOnly": true,
+      "lazyLoad": true,
+      "disabled": true
+    },
+    "meta-ads-readonly": {
+      "command": "npx",
+      "args": ["-y", "meta-ads-mcp-readonly"],
+      "env": {
+        "META_AD_ACCOUNT_ID": "${META_AD_ACCOUNT_ID}"
+      },
+      "readOnly": true,
+      "lazyLoad": true,
+      "disabled": true
+    },
+    "posthog-readonly": {
+      "command": "npx",
+      "args": ["-y", "@posthog/mcp-server"],
+      "env": {
+        "POSTHOG_PROJECT_ID": "${POSTHOG_PROJECT_ID}"
+      },
+      "readOnly": true,
+      "lazyLoad": true,
+      "disabled": true
+    },
+    "klaviyo-readonly": {
+      "command": "npx",
+      "args": ["-y", "klaviyo-mcp-readonly"],
+      "env": {
+        "KLAVIYO_API_KEY": "${KLAVIYO_API_KEY}"
+      },
+      "readOnly": true,
+      "lazyLoad": true,
+      "disabled": true
+    }
+  }
+}

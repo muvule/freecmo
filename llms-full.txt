@@ -1,0 +1,113 @@
+# FreeCMO
+
+> Open-source SMB CMO Agent Harness: Composer -> Orchestrator -> Ephemeral Subtask Micro-Pipeline.
+
+## Canonical Rules
+- [AGENTS.md](./AGENTS.md): Orchestrator cross-channel rules, strategy lock, and 4-lens reviewer
+- [guardrails.yaml](./.agents/guardrails.yaml): Autonomy envelope, stop-losses, VIP exclusions
+
+## Active Skills
+- [ad-creative-angle-matrix](./skills/social/ad-creative-angle-matrix/SKILL.md): Build visual-dna timed storyboards (0-4s/4-10s/CTA) and falsifiable ad angles from winners.
+- [aeo-entity-readiness](./skills/search-organic/aeo-entity-readiness/SKILL.md): Score 10-prompt AI citation share, entity gaps, and answer-first page priorities for GEO/AEO.
+- [blended-mer-reconciler](./skills/analytics/blended-mer-reconciler/SKILL.md): Reconcile blended MER, separate branded vs non-branded ROAS, and evaluate stop-loss triggers.
+- [cmo-init](./skills/core/cmo-init/SKILL.md): Initialize brand-truth.md and visual-dna.json from URL or repo with draft_pending_review lock.
+- [community-pain-radar](./skills/social/community-pain-radar/SKILL.md): Mine Reddit, HN, and forums in FTS5 radar.db for pain clusters with mandatory FTC disclosures.
+- [email-deliverability-flows](./skills/lifecycle-cro/email-deliverability-flows/SKILL.md): Audit SPF/DKIM/DMARC sender health, retention flow ROI, and VIP relationship exclusions.
+- [google-ads-smb-audit](./skills/search-paid/google-ads-smb-audit/SKILL.md): Audit SMB Google Ads campaigns for budget floors, conversion volume, and auto-apply traps.
+- [gsc-query-drift-triage](./skills/search-organic/gsc-query-drift-triage/SKILL.md): Triage Google Search Console query impression/position drift and paid-SEO cannibalization.
+- [landing-page-cro-audit](./skills/lifecycle-cro/landing-page-cro-audit/SKILL.md): Audit landing page speed, above-the-fold CTA clarity, offer friction, and A/B test power.
+- [local-seo-gbp-optimizer](./skills/search-organic/local-seo-gbp-optimizer/SKILL.md): Optimize Google Business Profile categories, LocalBusiness schema, and review velocity.
+- [meta-ads-smb-audit](./skills/social/meta-ads-smb-audit/SKILL.md): Audit Meta Ads spend floors, Advantage+ defaults, CAPI deduplication, and 14-day stop-losses.
+- [search-term-negative-miner](./skills/search-paid/search-term-negative-miner/SKILL.md): Mine Google Ads search term reports via n-gram clustering to cut zero-conversion waste spend.
+- [seo-geo-code-pr](./skills/search-organic/seo-geo-code-pr/SKILL.md): Stage isolated git branch PRs adding canonicals, meta tags, FAQPage JSON-LD, and AI robots.txt.
+- [social-seo-repurposer](./skills/social/social-seo-repurposer/SKILL.md): Turn /cmo run-with-this assets and customer wins into visual-dna social SEO & storyboard drafts.
+- [tracking-health-audit](./skills/analytics/tracking-health-audit/SKILL.md): Verify GA4, pixel, server-side conversion integrity, site speed, and budget gate prerequisites.
+- [unit-economics-floors](./skills/core/unit-economics-floors/SKILL.md): Compute allowable CAC, break-even ROAS, payback months, and cohort LTV floors before spend.
+- [weekly-cmo-brief](./skills/core/weekly-cmo-brief/SKILL.md): Synthesize weekly shift ledger, stop-losses, and cohort reallocations into max 5 Composer decisions.
+
+## Full Skill Catalog Metadata
+
+### ad-creative-angle-matrix (social / tier 1)
+- Status: active
+- Calculators: experiment_math
+- Description: Build visual-dna timed storyboards (0-4s/4-10s/CTA) and falsifiable ad angles from winners.
+
+### aeo-entity-readiness (search-organic / tier 1)
+- Status: active
+- Calculators: experiment_math, budget_gate
+- Description: Score 10-prompt AI citation share, entity gaps, and answer-first page priorities for GEO/AEO.
+
+### blended-mer-reconciler (analytics / tier 1)
+- Status: active
+- Calculators: mer
+- Description: Reconcile blended MER, separate branded vs non-branded ROAS, and evaluate stop-loss triggers.
+
+### cmo-init (core / tier 1)
+- Status: active
+- Calculators: cac_ltv, budget_gate
+- Description: Initialize brand-truth.md and visual-dna.json from URL or repo with draft_pending_review lock.
+
+### community-pain-radar (social / tier 1)
+- Status: active
+- Calculators: experiment_math
+- Description: Mine Reddit, HN, and forums in FTS5 radar.db for pain clusters with mandatory FTC disclosures.
+
+### email-deliverability-flows (lifecycle-cro / tier 1)
+- Status: active
+- Calculators: mer, experiment_math
+- Description: Audit SPF/DKIM/DMARC sender health, retention flow ROI, and VIP relationship exclusions.
+
+### google-ads-smb-audit (search-paid / tier 1)
+- Status: active
+- Calculators: budget_gate, cac_ltv
+- Description: Audit SMB Google Ads campaigns for budget floors, conversion volume, and auto-apply traps.
+
+### gsc-query-drift-triage (search-organic / tier 1)
+- Status: active
+- Calculators: experiment_math, budget_gate
+- Description: Triage Google Search Console query impression/position drift and paid-SEO cannibalization.
+
+### landing-page-cro-audit (lifecycle-cro / tier 1)
+- Status: active
+- Calculators: budget_gate, experiment_math
+- Description: Audit landing page speed, above-the-fold CTA clarity, offer friction, and A/B test power.
+
+### local-seo-gbp-optimizer (search-organic / tier 1)
+- Status: active
+- Calculators: budget_gate, experiment_math
+- Description: Optimize Google Business Profile categories, LocalBusiness schema, and review velocity.
+
+### meta-ads-smb-audit (social / tier 1)
+- Status: active
+- Calculators: budget_gate, mer
+- Description: Audit Meta Ads spend floors, Advantage+ defaults, CAPI deduplication, and 14-day stop-losses.
+
+### search-term-negative-miner (search-paid / tier 1)
+- Status: active
+- Calculators: ngram_waste
+- Description: Mine Google Ads search term reports via n-gram clustering to cut zero-conversion waste spend.
+
+### seo-geo-code-pr (search-organic / tier 1)
+- Status: active
+- Calculators: budget_gate, experiment_math
+- Description: Stage isolated git branch PRs adding canonicals, meta tags, FAQPage JSON-LD, and AI robots.txt.
+
+### social-seo-repurposer (social / tier 1)
+- Status: active
+- Calculators: experiment_math
+- Description: Turn /cmo run-with-this assets and customer wins into visual-dna social SEO & storyboard drafts.
+
+### tracking-health-audit (analytics / tier 1)
+- Status: active
+- Calculators: budget_gate, experiment_math
+- Description: Verify GA4, pixel, server-side conversion integrity, site speed, and budget gate prerequisites.
+
+### unit-economics-floors (core / tier 1)
+- Status: active
+- Calculators: cac_ltv
+- Description: Compute allowable CAC, break-even ROAS, payback months, and cohort LTV floors before spend.
+
+### weekly-cmo-brief (core / tier 1)
+- Status: active
+- Calculators: mer, experiment_math
+- Description: Synthesize weekly shift ledger, stop-losses, and cohort reallocations into max 5 Composer decisions.

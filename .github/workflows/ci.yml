@@ -1,0 +1,24 @@
+name: FreeCMO CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify packaging determinism
+        run: python3 scripts/build_packages.py --check
+      - name: Validate SKILL.md library & cmo-check math
+        run: python3 scripts/validate_skills.py
+      - name: Run deterministic nightly exam
+        run: python3 scripts/nightly_exam.py
+      - name: Run unit test suite
+        run: python3 -m unittest discover -s tests -v

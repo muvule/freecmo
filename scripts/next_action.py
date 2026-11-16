@@ -1,0 +1,457 @@
+"""Stage-precondition, disproof-condition, stop-loss, and cross-channel Orchestrator queue engine."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import sys
+from datetime import datetime, timezone
+from typing import Any
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from calculators import safe_parse_yaml, validate_json_schema
+from calculators.budget_gate import evaluate_budget_gate
+from calculators.experiment_math import evaluate_disproof_condition
+from calculators.mer import allocate_acquisition_vs_retention, evaluate_stop_losses
+from connectors.approval_gate import check_strategy_lock
+
+
+PRODUCTION_SKILLS = {
+    "google-ads-smb-audit",
+    "search-term-negative-miner",
+    "meta-ads-smb-audit",
+    "ad-creative-angle-matrix",
+    "social-seo-repurposer",
+    "seo-geo-code-pr",
+    "aeo-entity-readiness",
+    "landing-page-cro-audit",
+    "email-deliverability-flows",
+    "community-pain-radar",
+}
+
+
+def load_killed_assumptions(brand_truth_path: pathlib.Path) -> list[str]:
+    """Extract disproven angle keywords/bet IDs from brand-truth.md Killed Assumptions table."""
+    if not brand_truth_path.exists():
+        return []
+    text = brand_truth_path.read_text(encoding="utf-8")
+    killed: list[str] = []
+    in_section = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## 4. Killed Assumptions"):
+            in_section = True
+            continue
+        if in_section and s.startswith("## "):
+            break
+        if in_section and s.startswith("|") and not s.startswith("| Bet ID") and not s.startswith("|---"):
+            cols = [c.strip().strip("`") for c in s.strip("|").split("|")]
+            if len(cols) >= 2 and cols[0] and cols[0] != "—":
+                killed.append(cols[0].lower())
+                if cols[1] and cols[1] != "None recorded yet":
+                    killed.append(cols[1].lower())
+    return killed
+
+
+def append_killed_assumption(
+    brand_truth_path: pathlib.Path,
+    bet_id: str,
+    angle: str,
+    evidence: str,
+    killed_date: str,
+) -> None:
+    """Record a failed disproof condition in brand-truth.md Killed Assumptions table."""
+    if not brand_truth_path.exists():
+        return
+    text = brand_truth_path.read_text(encoding="utf-8")
+    if f"| `{bet_id}` |" in text:
+        return
+    new_row = f"| `{bet_id}` | {angle} | {evidence} | `{killed_date}` | Explicit market or product change approved by Composer |"
+    placeholder = "| — | None recorded yet | — | — | Requires explicit market/product shift approved by Composer |"
+    if placeholder in text:
+        text = text.replace(placeholder, new_row)
+    else:
+        marker = "## 5. Validated Learnings"
+        if marker in text:
+            text = text.replace(marker, new_row + "\n\n" + marker)
+        else:
+            text += "\n" + new_row + "\n"
+    brand_truth_path.write_text(text, encoding="utf-8")
+
+
+def process_experiment_ledger(
+    ledger_path: pathlib.Path,
+    brand_truth_path: pathlib.Path,
+    today: str | None = None,
+) -> list[dict[str, Any]]:
+    """Evaluate running experiments for disproof conditions; migrate failed bets to Killed Assumptions."""
+    if not ledger_path.exists():
+        return []
+    date_str = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lines = [ln.strip() for ln in ledger_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    updated_records: list[dict[str, Any]] = []
+    newly_killed: list[dict[str, Any]] = []
+
+    for ln in lines:
+        rec = json.loads(ln)
+        if rec.get("status") == "running" and rec.get("observed_metrics") and rec.get("disproof_condition"):
+            ev = evaluate_disproof_condition(rec["disproof_condition"], rec["observed_metrics"])
+            if ev.get("killed") is True:
+                rec["status"] = "killed"
+                rec["concluded_at"] = date_str
+                newly_killed.append(rec)
+                append_killed_assumption(
+                    brand_truth_path=brand_truth_path,
+                    bet_id=rec["experiment_id"],
+                    angle=rec["hypothesis"],
+                    evidence=f"Disproof triggered: {rec['disproof_condition']}",
+                    killed_date=date_str,
+                )
+        updated_records.append(rec)
+
+    if newly_killed:
+        ledger_path.write_text(
+            "\n".join(json.dumps(r, sort_keys=True) for r in updated_records) + "\n",
+            encoding="utf-8",
+        )
+    return newly_killed
+
+
+def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_ROOT) -> dict[str, Any]:
+    """Evaluate preconditions, stop-losses, cross-channel rules, and emit Dual Readout Brief."""
+    brand_truth_path = pathlib.Path(state.get("brand_truth_path") or (repo_root / ".agents/brand-truth.md"))
+    guardrails_path = pathlib.Path(state.get("guardrails_path") or (repo_root / ".agents/guardrails.yaml"))
+    ledger_path = pathlib.Path(state.get("experiment_ledger_path") or (repo_root / "experiments/ledger.jsonl"))
+
+    lock_status = check_strategy_lock(brand_truth_path)
+    normalized_lock = "locked" if lock_status == "locked" else "draft_pending_review"
+    newly_killed = process_experiment_ledger(ledger_path, brand_truth_path)
+    killed_markers = load_killed_assumptions(brand_truth_path)
+
+    guardrails = {}
+    if guardrails_path.exists():
+        guardrails = safe_parse_yaml(guardrails_path.read_text(encoding="utf-8")) or {}
+    org_paid = guardrails.get("organic_paid_rules", {}) or {}
+    stop_rules = guardrails.get("stop_loss_rules", []) or []
+
+    decisions: list[dict[str, Any]] = []
+    subtasks: list[dict[str, Any]] = []
+    circuit_breakers: list[dict[str, Any]] = []
+    segment_shifts: list[dict[str, Any]] = []
+
+    # 1. Hard Strategy-Before-Production Lock check
+    if normalized_lock != "locked":
+        decisions.append(
+            {
+                "rank": 1,
+                "priority": "P0",
+                "decision_title": "Lock brand-truth.md strategy before production",
+                "rationale": (
+                    "brand-truth.md is currently missing or draft_pending_review. "
+                    "All production creative, paid-ad, and code-PR subtasks are hard-blocked until Composer locks strategy."
+                ),
+                "dollar_impact_usd": 0.0,
+                "disproof_condition": "strategy_lock_status != locked after Composer review",
+                "source_receipts": [str(brand_truth_path)],
+            }
+        )
+        subtasks.append(
+            {
+                "subtask_id": "subtask-cmo-init-lock",
+                "skill_names": ["cmo-init", "unit-economics-floors"],
+                "model_tier": "deep_orchestrator",
+                "max_tool_calls": 6,
+                "max_tokens_budget": 16000,
+                "requires_reviewer": True,
+                "is_production_mutation": False,
+                "data_slice_pointers": [str(brand_truth_path)],
+                "file_touch_boundaries": {
+                    "allowed_paths": [".agents/brand-truth.md", ".agents/visual-dna.json"],
+                    "forbidden_paths": [".agents/guardrails.yaml", "calculators/*", "connectors/*"],
+                },
+                "goal": "Complete unit economics and strategy draft for Composer lock approval.",
+                "disproof_condition": "unit_economics == unknown after founder interview",
+            }
+        )
+        return _build_dual_readout(normalized_lock, circuit_breakers, decisions, segment_shifts, subtasks, repo_root)
+
+    # 2. Tracking & Stop-Loss Circuit Breakers
+    if state.get("tracking_verified") is False:
+        circuit_breakers.append(
+            {
+                "alert_id": "cb-tracking-broken",
+                "severity": "critical",
+                "message": "Conversion tracking verification failed; pause paid scaling immediately.",
+                "recommended_pause": True,
+            }
+        )
+        decisions.append(
+            {
+                "rank": len(decisions) + 1,
+                "priority": "P0",
+                "decision_title": "Repair conversion tracking before any paid spend",
+                "rationale": "Tracking health check failed. Scaling paid channels with broken attribution burns budget blindly.",
+                "dollar_impact_usd": float(state.get("monthly_budget_usd", 0.0)),
+                "disproof_condition": "conversion_events == 0 after 24h post-fix QA check",
+                "source_receipts": [state.get("tracking_receipt", "analytics/tracking_health")],
+            }
+        )
+        subtasks.append(
+            {
+                "subtask_id": "subtask-tracking-repair",
+                "skill_names": ["tracking-health-audit"],
+                "model_tier": "balanced_worker",
+                "max_tool_calls": 6,
+                "max_tokens_budget": 16000,
+                "requires_reviewer": False,
+                "is_production_mutation": False,
+                "data_slice_pointers": ["data/exports/ga4_events.csv"],
+                "file_touch_boundaries": {
+                    "allowed_paths": ["data/offload/*"],
+                    "forbidden_paths": [".agents/guardrails.yaml"],
+                },
+                "goal": "Diagnose missing conversion tags, server-side events, and UTM drop-offs.",
+                "disproof_condition": "purchase_event_match_rate < 0.95 after tag fix",
+            }
+        )
+
+    # Stop-losses
+    sl_res = evaluate_stop_losses(stop_rules, state.get("active_campaigns", []))
+    for alert in sl_res.get("triggered_alerts", []):
+        circuit_breakers.append(
+            {
+                "alert_id": f"cb-{alert['rule_id']}-{alert['campaign_id']}",
+                "severity": "critical",
+                "message": f"Stop-loss {alert['rule_id']} triggered on {alert['campaign_id']}: {alert['condition']}",
+                "recommended_pause": True,
+            }
+        )
+
+    # 3. Acquisition vs. Retention Reallocation
+    if state.get("cohort_segments"):
+        alloc = allocate_acquisition_vs_retention(
+            state["cohort_segments"],
+            reallocation_pool_usd=state.get("reallocation_pool_usd", 0.0),
+        )
+        rec = alloc.get("recommendation")
+        if rec and len(decisions) < 5:
+            segment_shifts.append(
+                {
+                    "from_segment": rec["from_segment"],
+                    "to_segment": rec["to_segment"],
+                    "amount_usd": rec["shift_usd"],
+                    "marginal_roi_delta_pct": rec["marginal_roi_delta_pct"],
+                }
+            )
+            decisions.append(
+                {
+                    "rank": len(decisions) + 1,
+                    "priority": "P0",
+                    "decision_title": f"Shift ${rec['shift_usd']:.0f} from {rec['from_segment']} to {rec['to_segment']}",
+                    "rationale": rec["summary"],
+                    "dollar_impact_usd": rec["shift_usd"],
+                    "disproof_condition": "retention_segment_incremental_roas < 2.0 after 14 days",
+                    "source_receipts": ["data/radar.db#cohort_profiles"],
+                }
+            )
+            subtasks.append(
+                {
+                    "subtask_id": "subtask-retention-shift",
+                    "skill_names": ["email-deliverability-flows"],
+                    "model_tier": "balanced_worker",
+                    "max_tool_calls": 6,
+                    "max_tokens_budget": 16000,
+                    "requires_reviewer": True,
+                    "is_production_mutation": False,
+                    "data_slice_pointers": ["data/radar.db"],
+                    "file_touch_boundaries": {
+                        "allowed_paths": ["data/offload/*"],
+                        "forbidden_paths": [".agents/guardrails.yaml"],
+                    },
+                    "goal": f"Stage win-back/retention flow for {rec['to_segment']} with VIP exclusion check.",
+                    "disproof_condition": "flow_revenue_per_recipient < 0.50 after 14 days",
+                }
+            )
+
+    # 4. Paid Search <-> SEO Cannibalization
+    max_pos = float(org_paid.get("seo_cannibalization_max_organic_pos", 2))
+    max_comp_is = float(org_paid.get("seo_cannibalization_max_competitor_is_pct", 5.0))
+    for overlap in state.get("paid_seo_overlaps", []):
+        if (
+            overlap.get("organic_position", 99) <= max_pos
+            and overlap.get("competitor_impression_share_pct", 100) < max_comp_is
+            and len(decisions) < 5
+        ):
+            saved = float(overlap.get("monthly_paid_spend_usd", 0.0))
+            decisions.append(
+                {
+                    "rank": len(decisions) + 1,
+                    "priority": "P1",
+                    "decision_title": f"Suppress cannibalizing paid term '{overlap['query']}'",
+                    "rationale": (
+                        f"Organic ranks #{overlap['organic_position']} with only "
+                        f"{overlap['competitor_impression_share_pct']}% competitor impression share; save ${saved:.0f}/mo."
+                    ),
+                    "dollar_impact_usd": saved,
+                    "disproof_condition": "total_blended_conversions_on_term drops > 15% after 14 days",
+                    "source_receipts": [overlap.get("receipt", "gsc_google_ads_join")],
+                }
+            )
+
+    # 5. Paid Winners / GEO Entity Gaps / Pain Clusters -> SEO/GEO Code PR
+    min_paid_conv = float(org_paid.get("paid_to_seo_min_conversions", 3))
+    allowable_cac = float(state.get("allowable_cac_usd", 100.0))
+    seo_candidates = [
+        c
+        for c in state.get("seo_geo_opportunities", [])
+        if (
+            (c.get("paid_conversions", 0) >= min_paid_conv and c.get("paid_cpa_usd", 9999) <= allowable_cac)
+            or c.get("geo_citation_score", 10) < 3
+            or c.get("pain_mentions", 0) >= 3
+        )
+        and not any(k in str(c.get("topic", "")).lower() for k in killed_markers)
+    ]
+    if seo_candidates and len(decisions) < 5:
+        top = seo_candidates[0]
+        decisions.append(
+            {
+                "rank": len(decisions) + 1,
+                "priority": "P1",
+                "decision_title": f"Stage SEO/GEO Code PR for '{top['topic']}'",
+                "rationale": "High-intent paid/pain/entity gap qualifies for answer-first FAQPage & comparison schema PR.",
+                "dollar_impact_usd": float(top.get("estimated_monthly_value_usd", 250.0)),
+                "disproof_condition": "organic_impressions_increase < 10% and geo_citations == 0 after 28 days",
+                "source_receipts": [top.get("receipt", "data/radar.db")],
+            }
+        )
+        subtasks.append(
+            {
+                "subtask_id": "subtask-seo-geo-pr",
+                "skill_names": ["aeo-entity-readiness", "seo-geo-code-pr"],
+                "model_tier": "balanced_worker",
+                "max_tool_calls": 6,
+                "max_tokens_budget": 16000,
+                "requires_reviewer": True,
+                "is_production_mutation": True,
+                "data_slice_pointers": ["data/radar.db"],
+                "file_touch_boundaries": {
+                    "allowed_paths": ["src/pages/*", "app/*", "public/robots.txt"],
+                    "forbidden_paths": [".env*", "auth/*", "billing/*"],
+                },
+                "goal": f"Create isolated branch PR adding FAQPage JSON-LD and comparison block for {top['topic']}.",
+                "disproof_condition": "geo_citation_share < 3 after 28 days",
+            }
+        )
+
+    # 6. Organic Social SEO / Run-With-This -> Paid Creative Seeding
+    min_mult = float(org_paid.get("social_to_paid_min_median_multiplier", 2.0))
+    for idx, post in enumerate(state.get("organic_social_posts", []), start=1):
+        if post.get("save_or_watch_multiplier", 0.0) >= min_mult and len(decisions) < 5:
+            gate = evaluate_budget_gate(
+                channel="paid_social",
+                tracking_verified=state.get("tracking_verified", False),
+                site_load_sec=state.get("site_load_sec", 2.5),
+                payback_months=state.get("payback_months"),
+                max_payback_months=state.get("max_payback_months", 3.0),
+                monthly_conversions=state.get("monthly_conversions", 0),
+                monthly_budget_usd=state.get("monthly_budget_usd", 0),
+            )
+            if gate.get("unlocked"):
+                decisions.append(
+                    {
+                        "rank": len(decisions) + 1,
+                        "priority": "P2",
+                        "decision_title": f"Seed PAUSED Spark Ad from top organic post {post['post_id']}",
+                        "rationale": f"Organic winner beat 30d median by {post['save_or_watch_multiplier']}x; stage PAUSED Meta test.",
+                        "dollar_impact_usd": float(post.get("test_budget_usd", 100.0)),
+                        "disproof_condition": "ctr < 0.008 after 2500 impressions OR conversions == 0 after 2.0x allowable_cac_usd spend",
+                        "source_receipts": [post.get("receipt", "social_analytics_export")],
+                    }
+                )
+                subtasks.append(
+                    {
+                        "subtask_id": f"subtask-social-to-paid-{idx}",
+                        "skill_names": ["ad-creative-angle-matrix", "meta-ads-smb-audit"],
+                        "model_tier": "multimodal_creative",
+                        "max_tool_calls": 6,
+                        "max_tokens_budget": 16000,
+                        "requires_reviewer": True,
+                        "is_production_mutation": False,
+                        "data_slice_pointers": ["data/exports/meta_ads.csv"],
+                        "file_touch_boundaries": {
+                            "allowed_paths": ["data/offload/*"],
+                            "forbidden_paths": [".agents/guardrails.yaml"],
+                        },
+                        "goal": f"Build timed storyboard & PAUSED Meta Spark Ad spec from post {post['post_id']}.",
+                        "disproof_condition": "ctr < 0.008 after 2500 impressions",
+                    }
+                )
+
+    if newly_killed and len(decisions) < 5:
+        decisions.append(
+            {
+                "rank": len(decisions) + 1,
+                "priority": "P1",
+                "decision_title": f"Retired {len(newly_killed)} disproven experiment(s) to Killed Assumptions",
+                "rationale": "Experiments breached quantitative disproof conditions and are now blocked from re-pitching.",
+                "dollar_impact_usd": 0.0,
+                "disproof_condition": "Explicit market shift approved by Composer",
+                "source_receipts": [str(ledger_path)],
+            }
+        )
+
+    for idx, d in enumerate(decisions[:5], start=1):
+        d["rank"] = idx
+
+    return _build_dual_readout(normalized_lock, circuit_breakers, decisions[:5], segment_shifts, subtasks, repo_root)
+
+
+def _build_dual_readout(
+    lock_status: str,
+    circuit_breakers: list[dict[str, Any]],
+    decisions: list[dict[str, Any]],
+    segment_shifts: list[dict[str, Any]],
+    subtasks: list[dict[str, Any]],
+    repo_root: pathlib.Path,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    brief = {
+        "brief_id": f"brief-{now.strftime('%Y%m%d-%H%M%S')}",
+        "generated_at": now.isoformat(),
+        "strategy_lock_status": lock_status,
+        "circuit_breakers": circuit_breakers,
+        "human_readout": {
+            "executive_summary": (
+                f"Generated {len(decisions)} prioritized Composer decision(s) with "
+                f"{len(circuit_breakers)} circuit breaker alert(s); lock={lock_status}."
+            ),
+            "ranked_decisions": decisions[:5],
+            "segment_budget_shifts": segment_shifts,
+        },
+        "agent_brief": {"subtasks": subtasks},
+    }
+    schema_path = repo_root / "schemas" / "composers_brief.schema.json"
+    if schema_path.exists():
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        errs = validate_json_schema(brief, schema, schema_path.parent)
+        if errs:
+            raise ValueError("Generated brief failed schema validation: " + "; ".join(errs))
+    return brief
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Evaluate preconditions & generate Dual Readout Brief.")
+    parser.add_argument("--input", required=True, help="JSON state snapshot path")
+    args = parser.parse_args(argv)
+    state = json.loads(pathlib.Path(args.input).read_text(encoding="utf-8"))
+    out = generate_next_actions(state)
+    print(json.dumps(out, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
