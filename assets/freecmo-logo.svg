@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 140" width="640" height="140" role="img" aria-label="FreeCMO minimalist Scandinavian logo">
+  <rect x="4" y="4" width="632" height="132" rx="20" fill="#F8F7F4" stroke="#E4E2DC" stroke-width="1.5"/>
+
+  <!-- Geometric Scandinavian Mark: Strategy Frame + Signal Arc + Precision Node -->
+  <g transform="translate(36, 30)">
+    <rect x="0" y="0" width="80" height="80" rx="18" fill="#18201E"/>
+    <!-- Minimal architectural F / growth bars + lens circle -->
+    <rect x="20" y="21" width="40" height="6" rx="3" fill="#F8F7F4"/>
+    <rect x="20" y="37" width="26" height="6" rx="3" fill="#F8F7F4"/>
+    <rect x="20" y="21" width="6" height="38" rx="3" fill="#F8F7F4"/>
+    <!-- Nordic Pine precision node -->
+    <circle cx="53" cy="52" r="8.5" fill="#4E8C75"/>
+    <circle cx="53" cy="52" r="3" fill="#F8F7F4"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="142" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="42" font-weight="600" letter-spacing="-1.2" fill="#18201E">FreeCMO</text>
+  <text x="144" y="100" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="13" font-weight="500" letter-spacing="2.4" fill="#5E6662">OPEN-SOURCE SMB CMO HARNESS</text>
+
+  <!-- Minimalist Nordic Accent Pill -->
+  <rect x="492" y="52" width="112" height="34" rx="17" fill="#EBF2EE" stroke="#C9DDD4" stroke-width="1"/>
+  <circle cx="511" cy="69" r="4" fill="#2F5D50"/>
+  <text x="523" y="74" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" font-weight="600" fill="#23473D">v0.1 · MIT</text>
+</svg>

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 200" width="960" height="200" role="img" aria-label="FreeCMO 5-Stage Weekly Operating Loop">
+  <rect x="2" y="2" width="956" height="196" rx="20" fill="#F8F7F4" stroke="#E4E2DC" stroke-width="1.5"/>
+
+  <text x="36" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" letter-spacing="2" fill="#6B726E">WEEKLY 10-MINUTE OPERATING LOOP · DISCRETE SHIFTS</text>
+  <line x1="36" y1="52" x2="924" y2="52" stroke="#E4E2DC" stroke-width="1"/>
+
+  <!-- Horizontal spine -->
+  <line x1="90" y1="92" x2="870" y2="92" stroke="#D5D2C8" stroke-width="2"/>
+
+  <!-- Step 1 -->
+  <g transform="translate(36, 72)">
+    <circle cx="54" cy="20" r="14" fill="#FFFFFF" stroke="#2F5D50" stroke-width="2"/>
+    <text x="50" y="24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="#2F5D50">1</text>
+    <text x="54" y="54" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="600" fill="#18201E">Collect</text>
+    <text x="54" y="74" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">Tier 0 CSVs or</text>
+    <text x="54" y="90" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">read-only MCPs</text>
+  </g>
+
+  <!-- Step 2 -->
+  <g transform="translate(222, 72)">
+    <circle cx="54" cy="20" r="14" fill="#FFFFFF" stroke="#2F5D50" stroke-width="2"/>
+    <text x="50" y="24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="#2F5D50">2</text>
+    <text x="54" y="54" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="600" fill="#18201E">Unify</text>
+    <text x="54" y="74" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">SHA-256 cohorts &amp;</text>
+    <text x="54" y="90" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">FTS5 pain radar</text>
+  </g>
+
+  <!-- Step 3 -->
+  <g transform="translate(408, 72)">
+    <circle cx="54" cy="20" r="14" fill="#FFFFFF" stroke="#2F5D50" stroke-width="2"/>
+    <text x="50" y="24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="#2F5D50">3</text>
+    <text x="54" y="54" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="600" fill="#18201E">Calculate</text>
+    <text x="54" y="74" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">MER, CAC payback,</text>
+    <text x="54" y="90" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">stop-loss &amp; disproof</text>
+  </g>
+
+  <!-- Step 4 -->
+  <g transform="translate(594, 72)">
+    <circle cx="54" cy="20" r="14" fill="#FFFFFF" stroke="#2F5D50" stroke-width="2"/>
+    <text x="50" y="24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="#2F5D50">4</text>
+    <text x="54" y="54" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="600" fill="#18201E">Decide</text>
+    <text x="54" y="74" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">Max 5 ranked bets</text>
+    <text x="54" y="90" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">with source receipts</text>
+  </g>
+
+  <!-- Step 5 -->
+  <g transform="translate(780, 72)">
+    <circle cx="54" cy="20" r="14" fill="#18201E" stroke="#18201E" stroke-width="2"/>
+    <text x="50" y="24" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="#F8F7F4">5</text>
+    <text x="54" y="54" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="600" fill="#18201E">Stage Safely</text>
+    <text x="54" y="74" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">PAUSED / PR branch</text>
+    <text x="54" y="90" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="11.5" fill="#5E6662">+ 1-click rollback</text>
+  </g>
+</svg>

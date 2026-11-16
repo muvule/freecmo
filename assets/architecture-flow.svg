@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 280" width="960" height="280" role="img" aria-label="FreeCMO Composer to Orchestrator to Ephemeral Subtask Architecture">
+  <rect x="2" y="2" width="956" height="276" rx="20" fill="#F8F7F4" stroke="#E4E2DC" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="36" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" letter-spacing="2" fill="#6B726E">CONTROL HIERARCHY · ATTENTION-BUDGETED EXECUTION</text>
+  <line x1="36" y1="56" x2="924" y2="56" stroke="#E4E2DC" stroke-width="1"/>
+
+  <!-- Card 1: Composer -->
+  <g transform="translate(36, 78)">
+    <rect x="0" y="0" width="196" height="166" rx="14" fill="#FFFFFF" stroke="#E0DDD5" stroke-width="1.2"/>
+    <circle cx="22" cy="24" r="5" fill="#18201E"/>
+    <text x="36" y="28" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="600" letter-spacing="1" fill="#5E6662">01 · COMPOSER</text>
+    <text x="18" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="600" fill="#18201E">Human Sets Score</text>
+    <text x="18" y="84" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">/cmo init &amp; strategy lock</text>
+    <text x="18" y="106" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">Weekly Brief (max 5 items)</text>
+    <text x="18" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">/cmo run-with-this drop-in</text>
+    <rect x="18" y="140" width="120" height="16" rx="8" fill="#F1F0EC"/>
+    <text x="27" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#2F5D50">status: locked</text>
+  </g>
+
+  <!-- Arrow 1 -> 2 -->
+  <line x1="238" y1="161" x2="264" y2="161" stroke="#9AA19D" stroke-width="1.5"/>
+  <polygon points="264,157 272,161 264,165" fill="#9AA19D"/>
+
+  <!-- Card 2: Orchestrator -->
+  <g transform="translate(274, 78)">
+    <rect x="0" y="0" width="196" height="166" rx="14" fill="#FFFFFF" stroke="#E0DDD5" stroke-width="1.2"/>
+    <circle cx="22" cy="24" r="5" fill="#2F5D50"/>
+    <text x="36" y="28" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="600" letter-spacing="1" fill="#5E6662">02 · ORCHESTRATOR</text>
+    <text x="18" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="600" fill="#18201E">Cross-Channel Brain</text>
+    <text x="18" y="84" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">Acq vs. Retention ROI</text>
+    <text x="18" y="106" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">Paid &lt;-&gt; SEO &amp; GEO gaps</text>
+    <text x="18" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">Stop-loss &amp; disproof kill</text>
+    <rect x="18" y="140" width="136" height="16" rx="8" fill="#EBF2EE"/>
+    <text x="27" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#23473D">next_action.py</text>
+  </g>
+
+  <!-- Arrow 2 -> 3 -->
+  <line x1="476" y1="161" x2="502" y2="161" stroke="#9AA19D" stroke-width="1.5"/>
+  <polygon points="502,157 510,161 502,165" fill="#9AA19D"/>
+
+  <!-- Card 3: Blind Worker -->
+  <g transform="translate(512, 78)">
+    <rect x="0" y="0" width="196" height="166" rx="14" fill="#FFFFFF" stroke="#E0DDD5" stroke-width="1.2"/>
+    <circle cx="22" cy="24" r="5" fill="#355C7D"/>
+    <text x="36" y="28" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="600" letter-spacing="1" fill="#5E6662">03 · WORKER</text>
+    <text x="18" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="600" fill="#18201E">Blind Specialist</text>
+    <text x="18" y="84" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">1-2 stateless SKILL.md</text>
+    <text x="18" y="106" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">&gt;1,500 tok offload pointer</text>
+    <text x="18" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#525A56">Exact CSV/URL receipts</text>
+    <rect x="18" y="140" width="132" height="16" rx="8" fill="#EBF0F5"/>
+    <text x="27" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#2A4A66">calculators/*.py</text>
+  </g>
+
+  <!-- Arrow 3 -> 4 -->
+  <line x1="714" y1="161" x2="740" y2="161" stroke="#9AA19D" stroke-width="1.5"/>
+  <polygon points="740,157 748,161 740,165" fill="#9AA19D"/>
+
+  <!-- Card 4: QA & Approval Gate -->
+  <g transform="translate(750, 78)">
+    <rect x="0" y="0" width="174" height="166" rx="14" fill="#18201E" stroke="#18201E" stroke-width="1.2"/>
+    <circle cx="22" cy="24" r="5" fill="#4E8C75"/>
+    <text x="36" y="28" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="600" letter-spacing="1" fill="#B7C0BC">04 · QA &amp; GATE</text>
+    <text x="18" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="600" fill="#F8F7F4">Verify &amp; Protect</text>
+    <text x="18" y="84" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#D5DBD8">Validator (no guessing)</text>
+    <text x="18" y="106" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#D5DBD8">4-Lens Zero-Ctx Review</text>
+    <text x="18" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="12.5" fill="#D5DBD8">VIP block + Rollback</text>
+    <rect x="18" y="140" width="128" height="16" rx="8" fill="#2B3834"/>
+    <text x="27" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#A6D4C1">SHA-256 + Nonce</text>
+  </g>
+</svg>
