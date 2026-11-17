@@ -181,7 +181,7 @@ All 22 canonical skills in `skills/` compile into channel packages (`packages/{c
 freecmo/
 ├── AGENTS.md / CLAUDE.md / GEMINI.md   # Cross-host orchestrator & governance contract
 ├── docs/HARNESS_SETUP.md               # Step-by-step setup for IDEs, Desktop, Web, Local LLMs & OpenRouter
-├── .agents/                            # Brand truth template, Visual DNA v1.1, instincts.md, guardrails.yaml, active skills (<=16)
+├── .agents/                            # Brand truth template, Visual DNA, instincts.md, guardrails.yaml, active skills (<=16)
 ├── assets/                             # Minimalist Scandinavian SVG logo & system diagrams
 ├── calculators/                        # Pure Python 3.11+ math (cac_ltv + promo + creator caps, mer, experiment_math, ngram_waste, budget_gate)
 ├── connectors/                         # ad_platform_sync, llm_router, utm_governance, csv_normalizer, identity_resolver, radar_store, approval_gate
