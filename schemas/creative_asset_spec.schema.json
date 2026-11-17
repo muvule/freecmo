@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freecmo.org/schemas/creative_asset_spec.schema.json",
+  "title": "SocialDisplayNativeCreativeSpec",
+  "type": "object",
+  "required": [
+    "asset_id",
+    "channel_family",
+    "visual_dna_ref",
+    "image_acquisition_mode",
+    "image_direction",
+    "copy_variants",
+    "compliance_disclosure",
+    "utm_tagged_url",
+    "disproof_condition"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "channel_family": {
+      "type": "string",
+      "enum": ["instagram_facebook_social", "linkedin_x_social", "google_display_iab", "native_discovery"]
+    },
+    "visual_dna_ref": {
+      "type": "string",
+      "const": ".agents/visual-dna.json"
+    },
+    "image_acquisition_mode": {
+      "type": "string",
+      "enum": ["ai_image_generation", "founder_photo_shoot", "product_ui_capture", "licensed_ugc_asset"]
+    },
+    "image_direction": {
+      "type": "object",
+      "required": ["aspect_ratio", "focal_subject", "generation_prompt_or_shot_list", "negative_constraints", "safe_zone_note"],
+      "additionalProperties": false,
+      "properties": {
+        "aspect_ratio": {
+          "type": "string",
+          "enum": ["9:16", "4:5", "1:1", "1.91:1", "16:9"]
+        },
+        "iab_banner_sizes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["300x250", "728x90", "300x600", "320x50", "160x600"]
+          }
+        },
+        "focal_subject": { "type": "string", "minLength": 5 },
+        "generation_prompt_or_shot_list": { "type": "string", "minLength": 15 },
+        "negative_constraints": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "safe_zone_note": { "type": "string", "minLength": 5 }
+      }
+    },
+    "copy_variants": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["short_headline", "primary_text", "cta_label"],
+        "additionalProperties": false,
+        "properties": {
+          "short_headline": { "type": "string", "minLength": 3, "maxLength": 30 },
+          "long_headline": { "type": "string", "maxLength": 90 },
+          "primary_text": { "type": "string", "minLength": 5, "maxLength": 500 },
+          "cta_label": { "type": "string", "minLength": 2, "maxLength": 24 }
+        }
+      }
+    },
+    "compliance_disclosure": {
+      "type": "string",
+      "minLength": 2
+    },
+    "utm_tagged_url": {
+      "type": "string",
+      "pattern": "^https?://.+utm_source=.+"
+    },
+    "disproof_condition": {
+      "type": "string",
+      "minLength": 8
+    }
+  }
+}

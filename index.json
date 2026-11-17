@@ -1,7 +1,8 @@
 {
+  "active_profile": "default",
   "active_runtime_skills": 16,
   "publication_holds": [],
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "skills": [
     {
       "calculators": [
@@ -59,6 +60,20 @@
     },
     {
       "calculators": [
+        "experiment_math",
+        "cac_ltv"
+      ],
+      "category": "content-comms",
+      "description": "Draft AP-style press releases, launch announcements, media pitches, and incident comms grounded in verified facts.",
+      "last_updated": "2026-11-16",
+      "name": "comms-press-release-writer",
+      "package": "content",
+      "source_path": "skills/content-comms/comms-press-release-writer/SKILL.md",
+      "status": "active",
+      "tier": 2
+    },
+    {
+      "calculators": [
         "experiment_math"
       ],
       "category": "social",
@@ -67,6 +82,60 @@
       "name": "community-pain-radar",
       "package": "social",
       "source_path": "skills/social/community-pain-radar/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "cac_ltv"
+      ],
+      "category": "core",
+      "description": "Build factual competitor comparison battlecards and calculate promo/discount gross-margin break-even lift.",
+      "last_updated": "2026-11-16",
+      "name": "competitor-battlecard-pricing",
+      "package": "core",
+      "source_path": "skills/core/competitor-battlecard-pricing/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "cac_ltv",
+        "experiment_math"
+      ],
+      "category": "lifecycle-cro",
+      "description": "Cap creator flat fees and affiliate commissions within allowable CAC, draft UGC briefs, and enforce FTC",
+      "last_updated": "2026-11-16",
+      "name": "creator-affiliate-partnerships",
+      "package": "lifecycle",
+      "source_path": "skills/lifecycle-cro/creator-affiliate-partnerships/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "budget_gate",
+        "experiment_math"
+      ],
+      "category": "social",
+      "description": "Guide image creation, photo/UI acquisition, IAB sizing, and copywriting for Instagram, Facebook, LinkedIn, Display & Native ads.",
+      "last_updated": "2026-11-16",
+      "name": "display-native-ad-studio",
+      "package": "social",
+      "source_path": "skills/social/display-native-ad-studio/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "experiment_math"
+      ],
+      "category": "content-comms",
+      "description": "Write answer-first SEO/GEO web blog posts, Reddit/HN forum posts, and LinkedIn articles or carousels.",
+      "last_updated": "2026-11-16",
+      "name": "editorial-blog-linkedin-writer",
+      "package": "content",
+      "source_path": "skills/content-comms/editorial-blog-linkedin-writer/SKILL.md",
       "status": "active",
       "tier": 1
     },
@@ -186,7 +255,7 @@
         "experiment_math"
       ],
       "category": "social",
-      "description": "Turn /cmo run-with-this assets and customer wins into visual-dna social SEO & storyboard drafts.",
+      "description": "Turn /cmo run-with-this assets into Instagram, Facebook, LinkedIn, X, TikTok/Shorts & Reddit social SEO drafts.",
       "last_updated": "2026-11-16",
       "name": "social-seo-repurposer",
       "package": "social",
@@ -236,5 +305,5 @@
       "tier": 1
     }
   ],
-  "total_source_skills": 17
+  "total_source_skills": 22
 }

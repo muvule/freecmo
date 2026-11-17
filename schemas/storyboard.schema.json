@@ -21,7 +21,27 @@
     },
     "aspect_ratio": {
       "type": "string",
-      "enum": ["9:16", "1:1", "16:9"]
+      "enum": ["9:16", "4:5", "1:1", "1.91:1", "16:9"]
+    },
+    "target_platforms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "instagram_reels",
+          "instagram_stories",
+          "instagram_feed",
+          "facebook_feed",
+          "facebook_reels",
+          "tiktok",
+          "youtube_shorts",
+          "linkedin",
+          "x",
+          "reddit",
+          "google_display",
+          "native_ads"
+        ]
+      }
     },
     "visual_dna_ref": {
       "type": "string",

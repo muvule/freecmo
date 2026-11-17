@@ -22,14 +22,79 @@ CATEGORY_TO_PACKAGE = {
     "search-paid": "search",
     "search-organic": "search",
     "social": "social",
+    "content-comms": "content",
     "lifecycle-cro": "lifecycle",
 }
 
 BOOTSTRAP_ONLY_SKILLS = {"cmo-init"}
 
+RUNTIME_PROFILES: dict[str, list[str]] = {
+    "default": [
+        "weekly-cmo-brief",
+        "unit-economics-floors",
+        "blended-mer-reconciler",
+        "tracking-health-audit",
+        "google-ads-smb-audit",
+        "search-term-negative-miner",
+        "meta-ads-smb-audit",
+        "ad-creative-angle-matrix",
+        "display-native-ad-studio",
+        "social-seo-repurposer",
+        "editorial-blog-linkedin-writer",
+        "comms-press-release-writer",
+        "seo-geo-code-pr",
+        "landing-page-cro-audit",
+        "email-deliverability-flows",
+        "creator-affiliate-partnerships",
+    ],
+    "content-comms": [
+        "weekly-cmo-brief",
+        "editorial-blog-linkedin-writer",
+        "comms-press-release-writer",
+        "social-seo-repurposer",
+        "display-native-ad-studio",
+        "community-pain-radar",
+        "aeo-entity-readiness",
+        "seo-geo-code-pr",
+        "gsc-query-drift-triage",
+        "local-seo-gbp-optimizer",
+        "competitor-battlecard-pricing",
+        "creator-affiliate-partnerships",
+        "email-deliverability-flows",
+        "landing-page-cro-audit",
+        "unit-economics-floors",
+        "blended-mer-reconciler",
+    ],
+    "paid-media": [
+        "weekly-cmo-brief",
+        "unit-economics-floors",
+        "blended-mer-reconciler",
+        "tracking-health-audit",
+        "google-ads-smb-audit",
+        "search-term-negative-miner",
+        "meta-ads-smb-audit",
+        "ad-creative-angle-matrix",
+        "display-native-ad-studio",
+        "social-seo-repurposer",
+        "competitor-battlecard-pricing",
+        "creator-affiliate-partnerships",
+        "landing-page-cro-audit",
+        "gsc-query-drift-triage",
+        "seo-geo-code-pr",
+        "email-deliverability-flows",
+    ],
+}
 
-def build_artifacts(repo_root: pathlib.Path = REPO_ROOT, check_only: bool = False) -> dict[str, Any]:
+
+def build_artifacts(
+    repo_root: pathlib.Path = REPO_ROOT,
+    check_only: bool = False,
+    profile: str = "default",
+) -> dict[str, Any]:
     """Build channel packages, active runtime pack (<=16), index.json, llms.txt, and llms-full.txt."""
+    if profile not in RUNTIME_PROFILES:
+        raise ValueError(f"Unknown profile {profile!r}; choose from {sorted(RUNTIME_PROFILES)}")
+
     skills_dir = repo_root / "skills"
     packages_dir = repo_root / "packages"
     active_dir = repo_root / ".agents" / "skills"
@@ -37,10 +102,10 @@ def build_artifacts(repo_root: pathlib.Path = REPO_ROOT, check_only: bool = Fals
     skill_files = sorted(skills_dir.glob("*/*/SKILL.md"))
     index_entries: list[dict[str, Any]] = []
     publication_holds: list[dict[str, str]] = []
-    active_candidates: list[tuple[str, pathlib.Path, dict[str, Any], str]] = []
+    active_candidates: dict[str, tuple[str, pathlib.Path, dict[str, Any], str]] = {}
 
     if not check_only:
-        for pkg_name in ("core", "search", "social", "lifecycle"):
+        for pkg_name in ("core", "search", "social", "content", "lifecycle"):
             pkg_path = packages_dir / pkg_name
             if pkg_path.exists():
                 shutil.rmtree(pkg_path)
@@ -80,10 +145,20 @@ def build_artifacts(repo_root: pathlib.Path = REPO_ROOT, check_only: bool = Fals
             pkg_target.write_text(raw_text, encoding="utf-8")
 
         if name not in BOOTSTRAP_ONLY_SKILLS:
-            active_candidates.append((name, skill_path, fm, raw_text))
+            active_candidates[name] = (name, skill_path, fm, raw_text)
 
-    # Enforce <= 16 active skills in .agents/skills/
-    active_pack = active_candidates[:16]
+    # Select curated <=16 active skills for .agents/skills/ (preserving context budget caps)
+    preferred_names = RUNTIME_PROFILES[profile]
+    active_pack: list[tuple[str, pathlib.Path, dict[str, Any], str]] = []
+    for pname in preferred_names:
+        if pname in active_candidates and len(active_pack) < 16:
+            active_pack.append(active_candidates[pname])
+    for name in sorted(active_candidates.keys()):
+        if len(active_pack) >= 16:
+            break
+        if all(item[0] != name for item in active_pack):
+            active_pack.append(active_candidates[name])
+
     if not check_only:
         for name, _, _, raw_text in active_pack:
             act_target = active_dir / name / "SKILL.md"
@@ -91,9 +166,10 @@ def build_artifacts(repo_root: pathlib.Path = REPO_ROOT, check_only: bool = Fals
             act_target.write_text(raw_text, encoding="utf-8")
 
     index_payload = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "total_source_skills": len(index_entries),
         "active_runtime_skills": len(active_pack),
+        "active_profile": profile,
         "publication_holds": publication_holds,
         "skills": sorted(index_entries, key=lambda x: x["name"]),
     }
@@ -104,11 +180,12 @@ def build_artifacts(repo_root: pathlib.Path = REPO_ROOT, check_only: bool = Fals
         "",
         "> Open-source SMB CMO Agent Harness: Composer -> Orchestrator -> Ephemeral Subtask Micro-Pipeline.",
         "",
-        "## Canonical Rules",
+        "## Canonical Rules & Guides",
         "- [AGENTS.md](./AGENTS.md): Orchestrator cross-channel rules, strategy lock, and 4-lens reviewer",
         "- [guardrails.yaml](./.agents/guardrails.yaml): Autonomy envelope, stop-losses, VIP exclusions",
+        "- [HARNESS_SETUP.md](./docs/HARNESS_SETUP.md): Setup for Claude, ChatGPT, Antigravity, Cursor, Codex, Local LLMs & OpenRouter",
         "",
-        "## Active Skills",
+        "## Canonical Skills",
     ]
     for e in sorted(index_entries, key=lambda x: x["name"]):
         if e["status"] != "needs_sources":
@@ -148,15 +225,16 @@ def build_artifacts(repo_root: pathlib.Path = REPO_ROOT, check_only: bool = Fals
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compile skills/ into packages/, .agents/skills/, and catalogs.")
     parser.add_argument("--check", action="store_true", help="Verify generated files match source skills without writing.")
+    parser.add_argument("--profile", choices=sorted(RUNTIME_PROFILES.keys()), default="default")
     args = parser.parse_args(argv)
 
-    res = build_artifacts(REPO_ROOT, check_only=args.check)
+    res = build_artifacts(REPO_ROOT, check_only=args.check, profile=args.profile)
     if args.check and res["drift"]:
         print("FAIL: Packaging drift detected in:", ", ".join(res["drift"]))
         return 1
     print(
         f"OK: {res['total_source_skills']} source skills, "
-        f"{res['active_runtime_skills']} active runtime skills, "
+        f"{res['active_runtime_skills']} active runtime skills ({args.profile}), "
         f"{res['publication_holds']} holds."
     )
     return 0

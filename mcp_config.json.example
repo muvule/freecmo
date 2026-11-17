@@ -1,6 +1,12 @@
 {
-  "_comment": "Lazy-loaded Tier 1 read-only MCP presets. Copy to mcp_config.json and configure credentials via environment variables. Tier 0 works offline with CSVs in data/exports/.",
+  "_comment": "FreeCMO MCP configuration. freecmo-core runs locally using Python 3.11+ stdlib (zero npm/pip packages). External platform MCPs below are optional lazy-loaded presets.",
   "mcpServers": {
+    "freecmo-core": {
+      "command": "python3",
+      "args": ["scripts/mcp_server.py"],
+      "readOnly": false,
+      "disabled": false
+    },
     "ga4-readonly": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-google-analytics"],

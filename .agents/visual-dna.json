@@ -1,47 +1,74 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "brand_name": "Your Brand",
   "extraction_status": "draft_pending_review",
   "palette": {
-    "primary_hex": "#111827",
-    "secondary_hex": "#2563EB",
-    "accent_hex": "#10B981",
-    "background_hex": "#FFFFFF",
-    "text_hex": "#111827"
+    "primary_hex": "#18201E",
+    "secondary_hex": "#2F5D50",
+    "accent_hex": "#4E8C75",
+    "background_hex": "#F8F7F4",
+    "text_hex": "#18201E"
   },
   "typography": {
     "heading_font": "Inter",
     "body_font": "Inter",
-    "tone": "clean_editorial"
+    "tone": "minimalist_editorial"
   },
   "imagery_style": {
     "preferred": [
-      "real product UI screenshots",
-      "authentic founder/team workspace photos",
-      "high-contrast data charts with source labels"
+      "real product UI screenshots on neutral background",
+      "natural-light founder/customer workspace photography",
+      "high-contrast data charts with verbatim source labels"
+    ],
+    "acquisition_sources": [
+      "founder smartphone shot list (60fps natural window light)",
+      "clean browser viewport UI capture (2x retina)",
+      "customer-approved UGC clips with signed usage rights"
     ],
     "forbidden_visual_tropes": [
-      "generic glowing AI brains",
-      "stock handshake photos",
+      "generic glowing AI brains or neon robots",
+      "staged corporate handshake stock photos",
       "unreadable text-over-busy-background thumbnails",
-      "fake countdown timers"
+      "fake countdown timers or deceptive red notification badges"
     ]
   },
   "aspect_ratio_specs": {
     "9:16": {
-      "platforms": ["tiktok", "youtube_shorts", "instagram_reels"],
-      "safe_zone": "Keep text within center 75% vertical band; avoid bottom 20% caption overlay.",
+      "resolution": "1080x1920",
+      "platforms": ["instagram_reels", "instagram_stories", "facebook_reels", "tiktok", "youtube_shorts"],
+      "safe_zone": "Keep copy & logos within center 75% vertical band; reserve top 14% for handle and bottom 20% for IG/FB/TikTok captions & link stickers.",
       "max_duration_sec": 30
     },
+    "4:5": {
+      "resolution": "1080x1350",
+      "platforms": ["instagram_feed", "instagram_carousel", "facebook_feed", "linkedin_mobile_feed"],
+      "safe_zone": "Minimum 64px outer padding; headline <= 8 words in top 25% focal zone.",
+      "max_duration_sec": 15
+    },
     "1:1": {
-      "platforms": ["instagram_feed", "linkedin_carousel", "meta_feed"],
-      "safe_zone": "Minimum 48px margin; single focal metric or product frame.",
+      "resolution": "1080x1080",
+      "platforms": ["instagram_carousel", "facebook_carousel", "linkedin_carousel", "meta_feed"],
+      "safe_zone": "Minimum 48px margin; single focal metric or product frame per slide.",
+      "max_duration_sec": 15
+    },
+    "1.91:1": {
+      "resolution": "1200x628",
+      "platforms": ["google_display_responsive", "native_taboola_outbrain", "facebook_link_share", "linkedin_single_image", "reddit_promoted"],
+      "safe_zone": "Zero text on native thumbnail image where required; <= 20% text area on GDN/social link cards.",
       "max_duration_sec": 15
     },
     "16:9": {
+      "resolution": "1920x1080",
       "platforms": ["youtube", "linkedin_video", "landing_page_hero"],
       "safe_zone": "Left-aligned headline <= 7 words; caption-ready lower third.",
       "max_duration_sec": 60
     }
-  }
+  },
+  "iab_display_banners": [
+    {"size": "300x250", "name": "Medium Rectangle"},
+    {"size": "728x90", "name": "Leaderboard"},
+    {"size": "300x600", "name": "Half Page"},
+    {"size": "320x50", "name": "Mobile Leaderboard"},
+    {"size": "160x600", "name": "Wide Skyscraper"}
+  ]
 }

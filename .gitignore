@@ -14,7 +14,11 @@ data/rollbacks/*
 data/radar.db
 data/radar.db-wal
 data/radar.db-shm
+data/latest_sync_state.json
+data/weekly_brief.json
 .agents/brand-truth.md
+dist/
+.cursor/
 
 # Python artifacts
 __pycache__/

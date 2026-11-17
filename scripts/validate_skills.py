@@ -28,7 +28,15 @@ MANDATORY_SECTIONS = [
     "## Sources",
 ]
 
-ALLOWED_CATEGORIES = {"core", "analytics", "search-paid", "search-organic", "social", "lifecycle-cro"}
+ALLOWED_CATEGORIES = {
+    "core",
+    "analytics",
+    "search-paid",
+    "search-organic",
+    "social",
+    "content-comms",
+    "lifecycle-cro",
+}
 
 PRIMARY_SOURCE_DOMAINS = {
     "support.google.com",
@@ -38,6 +46,13 @@ PRIMARY_SOURCE_DOMAINS = {
     "business.facebook.com",
     "developers.facebook.com",
     "www.facebook.com",
+    "help.instagram.com",
+    "ads.tiktok.com",
+    "business.tiktok.com",
+    "www.iab.com",
+    "iabtechlab.com",
+    "www.apstylebook.com",
+    "www.sec.gov",
     "www.ftc.gov",
     "ftc.gov",
     "eur-lex.europa.eu",

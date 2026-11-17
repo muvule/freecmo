@@ -1,0 +1,67 @@
+name: Automated Weekly CMO Shift
+
+on:
+  workflow_dispatch:
+    inputs:
+      demo_mode:
+        description: "Run with deterministic demo telemetry if platform secrets are not set"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  # Uncomment the schedule below once your read-only ad/analytics secrets are configured in GitHub Actions:
+  # schedule:
+  #   - cron: "0 13 * * 1"  # Every Monday at 13:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  weekly-cmo-brief:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FreeCMO
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12 (stdlib only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync Ad/Analytics/Revenue Telemetry & Generate Weekly Brief
+        env:
+          GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          IG_BUSINESS_ACCOUNT_ID: ${{ secrets.IG_BUSINESS_ACCOUNT_ID }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_AD_ACCOUNT_ID: ${{ secrets.LINKEDIN_AD_ACCOUNT_ID }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+          TIKTOK_ADVERTISER_ID: ${{ secrets.TIKTOK_ADVERTISER_ID }}
+          GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+          GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          STRIPE_RESTRICTED_KEY: ${{ secrets.STRIPE_RESTRICTED_KEY }}
+          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
+        run: |
+          if [ "${{ inputs.demo_mode }}" = "false" ]; then
+            python3 scripts/sync_platforms.py --emit-brief --output-brief data/weekly_brief.json
+          else
+            python3 scripts/sync_platforms.py --demo-fixture --emit-brief --output-brief data/weekly_brief.json
+          fi
+
+      - name: Upload Weekly Composer's Brief Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-composers-brief
+          path: |
+            data/weekly_brief.json
+            data/latest_sync_state.json
+          retention-days: 30
