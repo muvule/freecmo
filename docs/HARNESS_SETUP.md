@@ -109,11 +109,11 @@ python3 scripts/cmo_runner.py run-skill --provider openrouter --skill comms-pres
 ## 4. Automated Ad, Social (IG/FB), Analytics & Revenue Sync
 
 No manual CSV exporting required. Configure read-only tokens in `.env` (see `.env.example`) for any combination of:
-- **Google Ads** (`GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_DEVELOPER_TOKEN`, Google OAuth2 refresh token)
-- **Meta Ads + Instagram Business + Facebook Page** (`META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `IG_BUSINESS_ACCOUNT_ID`, `FB_PAGE_ID`)
-- **LinkedIn Ads & TikTok Ads** (`LINKEDIN_ACCESS_TOKEN`, `TIKTOK_ACCESS_TOKEN`)
-- **GA4 & Google Search Console** (`GA4_PROPERTY_ID`, `GSC_SITE_URL`)
-- **Stripe & Shopify** (`STRIPE_RESTRICTED_KEY`, `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ADMIN_TOKEN` — customer emails are SHA-256 hashed locally before touching disk or SQLite)
+- **Google Ads** (`GOOGLE_ADS_CUSTOMER_ID`, Google OAuth2 refresh token — `v26`, developer token optional)
+- **Meta Ads + Instagram Business + Facebook Page** (`META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `IG_BUSINESS_ACCOUNT_ID`, `FB_PAGE_ID` — Graph API `v27.0` with `views,reach,saved` insights)
+- **LinkedIn Ads & TikTok Ads** (`LINKEDIN_ACCESS_TOKEN` / `202610`, `TIKTOK_ACCESS_TOKEN` / `v1.3`)
+- **GA4 & Google Search Console** (`GA4_PROPERTY_ID` using `keyEvents`, `GSC_SITE_URL`)
+- **Stripe & Shopify** (`STRIPE_RESTRICTED_KEY` via `/v1/payment_intents`, `SHOPIFY_STORE_DOMAIN` + `SHOPIFY_ADMIN_TOKEN` via GraphQL Admin `2026-10` — customer emails are SHA-256 hashed locally before touching disk or SQLite)
 
 Run a live sync + Weekly Composer's Brief:
 ```bash

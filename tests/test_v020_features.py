@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -13,6 +14,7 @@ from calculators import validate_json_schema
 from calculators.cac_ltv import compute_creator_commission_cap, compute_promo_breakeven
 from connectors.ad_platform_sync import (
     detect_configured_platforms,
+    fetch_ga4,
     fetch_google_ads,
     fetch_linkedin_ads,
     fetch_meta_ads_and_social,
@@ -142,8 +144,8 @@ class TestV020Features(unittest.TestCase):
 
     def test_automated_platform_sync_mock_and_demo_pipeline(self) -> None:
         env = {
+            # Google Ads v26 works without GOOGLE_ADS_DEVELOPER_TOKEN (sunset Sept 2026)
             "GOOGLE_ADS_CUSTOMER_ID": "123-456-7890",
-            "GOOGLE_ADS_DEVELOPER_TOKEN": "dev-tok",
             "GOOGLE_ADS_ACCESS_TOKEN": "ya29.test",
             "META_ACCESS_TOKEN": "EAAB-test",
             "META_AD_ACCOUNT_ID": "act_998877",
@@ -153,6 +155,8 @@ class TestV020Features(unittest.TestCase):
             "LINKEDIN_AD_ACCOUNT_ID": "445566",
             "TIKTOK_ACCESS_TOKEN": "tt-tok",
             "TIKTOK_ADVERTISER_ID": "778899",
+            "GA4_PROPERTY_ID": "987654321",
+            "GA4_ACCESS_TOKEN": "ya29.ga4",
             "STRIPE_RESTRICTED_KEY": "rk_live_secret",
             "SHOPIFY_STORE_DOMAIN": "nordic.myshopify.com",
             "SHOPIFY_ADMIN_TOKEN": "shpat_secret",
@@ -160,18 +164,21 @@ class TestV020Features(unittest.TestCase):
         configured = detect_configured_platforms(env)
         self.assertEqual(
             configured,
-            ["google_ads", "meta_ads", "linkedin_ads", "tiktok_ads", "stripe", "shopify"],
+            ["google_ads", "meta_ads", "linkedin_ads", "tiktok_ads", "ga4", "stripe", "shopify"],
         )
 
-        captured_gads_body: list[str] = []
+        captured_bodies: list[tuple[str, str]] = []
+        captured_headers: list[tuple[str, dict[str, str]]] = []
         captured_urls: list[str] = []
 
         def fake_transport(req: urllib.request.Request) -> dict[str, Any]:
             u = req.full_url
             captured_urls.append(u)
+            hdrs = {k.lower(): v for k, v in req.header_items()}
+            captured_headers.append((u, hdrs))
+            if req.data:
+                captured_bodies.append((u, req.data.decode("utf-8")))
             if "googleads.googleapis.com" in u:
-                if req.data:
-                    captured_gads_body.append(req.data.decode("utf-8"))
                 return {
                     "batches": [
                         {
@@ -209,8 +216,30 @@ class TestV020Features(unittest.TestCase):
             if "/1784140000/media" in u:
                 return {
                     "data": [
-                        {"id": "ig1", "media_type": "REELS", "caption": "Desk\ncable tray", "saved": 120, "plays": 9000, "reach": 8500},
-                        {"id": "ig2", "media_type": "CAROUSEL_ALBUM", "caption": "Wood grain", "saved": 10, "plays": 400, "reach": 500},
+                        {
+                            "id": "ig1",
+                            "media_type": "REELS",
+                            "caption": "Desk\ncable tray",
+                            "insights": {
+                                "data": [
+                                    {"name": "views", "values": [{"value": 9000}]},
+                                    {"name": "reach", "values": [{"value": 8500}]},
+                                    {"name": "saved", "values": [{"value": 120}]},
+                                ]
+                            },
+                        },
+                        {
+                            "id": "ig2",
+                            "media_type": "CAROUSEL_ALBUM",
+                            "caption": "Wood grain",
+                            "insights": {
+                                "data": [
+                                    {"name": "views", "values": [{"value": 400}]},
+                                    {"name": "reach", "values": [{"value": 500}]},
+                                    {"name": "saved", "values": [{"value": 10}]},
+                                ]
+                            },
+                        },
                     ]
                 }
             if "/100200300/posts" in u:
@@ -221,7 +250,7 @@ class TestV020Features(unittest.TestCase):
                         {
                             "pivotValues": ["urn:li:sponsoredCampaign:801"],
                             "campaignName": "LinkedIn ABM",
-                            "costInUsd": "120.0",
+                            "costInLocalCurrency": "120.0",
                             "impressions": 3000,
                             "clicks": 45,
                             "externalWebsiteConversions": 2,
@@ -247,69 +276,159 @@ class TestV020Features(unittest.TestCase):
                         ]
                     }
                 }
+            if "analyticsdata.googleapis.com" in u:
+                return {
+                    "rows": [
+                        {
+                            "dimensionValues": [{"value": "Organic Search"}],
+                            "metricValues": [{"value": "4200"}, {"value": "38"}, {"value": "7220.0"}],
+                        }
+                    ]
+                }
             if "api.stripe.com" in u:
-                if "starting_after=ch_1" in u:
+                if "starting_after=pi_1" in u:
                     return {
                         "has_more": False,
                         "data": [
                             {
-                                "id": "ch_2",
-                                "paid": True,
-                                "refunded": False,
-                                "amount": 11000,
-                                "billing_details": {"email": "alice@private-customer.com"},
+                                "id": "pi_2",
+                                "status": "succeeded",
+                                "amount_received": 11000,
+                                "receipt_email": "alice@private-customer.com",
+                                "latest_charge": {"id": "ch_2", "refunded": False},
                                 "metadata": {},
-                            }
+                            },
+                            {
+                                "id": "pi_refunded",
+                                "status": "succeeded",
+                                "amount_received": 9900,
+                                "receipt_email": "refund@private-customer.com",
+                                "latest_charge": {"id": "ch_ref", "refunded": True},
+                                "metadata": {},
+                            },
                         ],
                     }
                 return {
                     "has_more": True,
                     "data": [
                         {
-                            "id": "ch_1",
-                            "paid": True,
-                            "refunded": False,
-                            "amount": 24000,
-                            "billing_details": {"email": "alice@private-customer.com"},
+                            "id": "pi_1",
+                            "status": "succeeded",
+                            "amount_received": 24000,
+                            "latest_charge": {
+                                "id": "ch_1",
+                                "refunded": False,
+                                "billing_details": {"email": "alice@private-customer.com"},
+                            },
                             "metadata": {"utm_source": "instagram_reels"},
                         }
                     ],
                 }
             if "myshopify.com" in u:
-                return {
-                    "orders": [
-                        {
-                            "id": 501,
-                            "email": "bob@private-customer.com",
-                            "total_price": "310.00",
-                            "landing_site": "/products/desk?utm_source=google_cpc",
+                req_json = json.loads(req.data.decode("utf-8")) if req.data else {}
+                cursor = (req_json.get("variables") or {}).get("cursor")
+                if cursor == "cur_1":
+                    return {
+                        "data": {
+                            "orders": {
+                                "edges": [
+                                    {
+                                        "node": {
+                                            "id": "gid://shopify/Order/502",
+                                            "email": "bob@private-customer.com",
+                                            "totalPriceSet": {"shopMoney": {"amount": "90.00"}},
+                                            "customerJourneySummary": {
+                                                "firstVisit": {
+                                                    "landingPage": "/products/desk?utm_source=google_cpc",
+                                                    "utmParameters": None,
+                                                }
+                                            },
+                                        }
+                                    }
+                                ],
+                                "pageInfo": {"hasNextPage": False, "endCursor": "cur_2"},
+                            }
                         }
-                    ]
+                    }
+                return {
+                    "data": {
+                        "orders": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "id": "gid://shopify/Order/501",
+                                        "email": "bob@private-customer.com",
+                                        "totalPriceSet": {"shopMoney": {"amount": "310.00"}},
+                                        "customerJourneySummary": {
+                                            "firstVisit": {
+                                                "landingPage": "/products/desk",
+                                                "utmParameters": {"source": "google_cpc"},
+                                            }
+                                        },
+                                    }
+                                }
+                            ],
+                            "pageInfo": {"hasNextPage": True, "endCursor": "cur_1"},
+                        }
+                    }
                 }
             return {}
 
         gads = fetch_google_ads(env, transport=fake_transport)
         self.assertEqual(gads["rows"][0]["spend_usd"], 250.0)
-        self.assertIn("segments.date BETWEEN", captured_gads_body[0])
-        self.assertNotIn("DURING LAST_", captured_gads_body[0])
+        gads_url = next(u for u in captured_urls if "googleads.googleapis.com" in u)
+        self.assertIn("/v26/customers/1234567890/googleAds:searchStream", gads_url)
+        gads_body = next(b for u, b in captured_bodies if "googleads.googleapis.com" in u)
+        self.assertIn("segments.date BETWEEN", gads_body)
+        self.assertNotIn("DURING LAST_", gads_body)
+        gads_hdrs = next(h for u, h in captured_headers if "googleads.googleapis.com" in u)
+        self.assertNotIn("developer-token", gads_hdrs)
 
         meta = fetch_meta_ads_and_social(env, transport=fake_transport)
         self.assertEqual(len(meta["organic_social_posts"]), 3)
+        self.assertEqual(meta["organic_social_posts"][0]["saves"], 120)
+        self.assertEqual(meta["organic_social_posts"][0]["reach"], 8500)
         self.assertGreaterEqual(meta["organic_social_posts"][0]["save_or_watch_multiplier"], 2.0)
+        ig_url = next(u for u in captured_urls if "/1784140000/media" in u)
+        self.assertIn("https://graph.facebook.com/v27.0/", ig_url)
+        self.assertIn("insights.metric", ig_url)
+        self.assertNotIn("plays", urllib.parse.unquote(ig_url))
 
         li = fetch_linkedin_ads(env, transport=fake_transport)
         self.assertEqual(li["rows"][0]["campaign_id"], "li-801")
+        self.assertEqual(li["rows"][0]["spend_usd"], 120.0)
+        li_hdrs = next(h for u, h in captured_headers if "linkedin.com" in u)
+        self.assertEqual(li_hdrs.get("linkedin-version"), "202610")
         self.assertTrue(any("timeGranularity=ALL" in u for u in captured_urls if "linkedin.com" in u))
 
         tt = fetch_tiktok_ads(env, transport=fake_transport)
         self.assertEqual(tt["rows"][0]["revenue_usd"], 360.0)
         self.assertTrue(any("total_complete_payment" in u for u in captured_urls if "tiktok.com" in u))
 
+        ga4_res = fetch_ga4(env, transport=fake_transport)
+        self.assertTrue(ga4_res["tracking_verified"])
+        self.assertEqual(ga4_res["monthly_conversions"], 38)
+        ga4_body = next(b for u, b in captured_bodies if "analyticsdata.googleapis.com" in u)
+        self.assertIn('"keyEvents"', ga4_body)
+        self.assertNotIn('"conversions"', ga4_body)
+
         stripe_res = fetch_stripe_revenue(env, transport=fake_transport)
+        self.assertEqual(len(stripe_res["rows"]), 1)
         self.assertAlmostEqual(stripe_res["rows"][0]["ltv_usd"], 350.0)
         self.assertEqual(stripe_res["rows"][0]["orders_count"], 2)
+        stripe_url = next(u for u in captured_urls if "api.stripe.com" in u)
+        self.assertIn("/v1/payment_intents?", stripe_url)
+        self.assertIn("expand%5B%5D=data.latest_charge", stripe_url)
+        stripe_hdrs = next(h for u, h in captured_headers if "api.stripe.com" in u)
+        self.assertEqual(stripe_hdrs.get("stripe-version"), "2026-10-28.endive")
 
         shopify_res = fetch_shopify_orders(env, transport=fake_transport)
+        self.assertEqual(len(shopify_res["rows"]), 1)
+        self.assertAlmostEqual(shopify_res["rows"][0]["ltv_usd"], 400.0)
+        self.assertEqual(shopify_res["rows"][0]["orders_count"], 2)
+        self.assertEqual(shopify_res["rows"][0]["crm_segment"], "repeat_buyer")
+        shopify_url = next(u for u in captured_urls if "myshopify.com" in u)
+        self.assertEqual(shopify_url, "https://nordic.myshopify.com/admin/api/2026-10/graphql.json")
         # Ensure raw emails were hashed and never appear in normalized rows
         self.assertNotIn("alice@private-customer.com", json.dumps(stripe_res))
         self.assertNotIn("bob@private-customer.com", json.dumps(shopify_res))
