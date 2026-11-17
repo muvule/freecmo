@@ -154,7 +154,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--brand-domain", default="example.com")
     parser.add_argument("--category", default="SMB marketing software")
     parser.add_argument("--icp", default="solo founders")
+    parser.add_argument(
+        "--provider",
+        help="Optional LLM provider via connectors.llm_router (e.g. gemini-hydrogen, gemini, openrouter, ollama)",
+    )
+    parser.add_argument(
+        "--audit-file",
+        help="Optional HTML/Markdown file path to run Google AI Mode Query Fan-Out readiness audit",
+    )
     args = parser.parse_args(argv)
+
+    if args.audit_file:
+        from calculators.fanout_audit import audit_page_fanout_readiness
+
+        content = pathlib.Path(args.audit_file).read_text(encoding="utf-8")
+        out = audit_page_fanout_readiness(content=content, primary_query=f"{args.category} for {args.icp}")
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0
 
     if args.fixture:
         data = json.loads(pathlib.Path(args.fixture).read_text(encoding="utf-8"))
@@ -164,6 +180,24 @@ def main(argv: list[str] | None = None) -> int:
             competitors=data.get("competitors", []),
             prompt_responses=data["prompt_responses"],
         )
+    elif args.provider:
+        from connectors.env_loader import load_dotenv_file
+        from connectors.llm_router import complete_prompt
+
+        env = load_dotenv_file(REPO_ROOT / ".env")
+        prompts = build_10_buyer_prompts(args.category, args.icp, [])
+        sys_prompt = "You are a helpful AI assistant comparing products and software for business buyers. Provide objective, well-researched recommendations with brand names and URLs when known."
+        responses = []
+        for p in prompts:
+            res = complete_prompt(
+                system_prompt=sys_prompt,
+                user_prompt=p,
+                model_tier="fast_decider",
+                provider_override=args.provider,
+                env=env,
+            )
+            responses.append({"prompt": p, "response": res.get("content", "")})
+        out = score_benchmark_responses(args.brand_name, args.brand_domain, [], responses)
     else:
         base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OLLAMA_BASE_URL")
         model = os.environ.get("OPENAI_MODEL") or os.environ.get("OLLAMA_MODEL") or "llama3.1:8b"
@@ -183,3 +217,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

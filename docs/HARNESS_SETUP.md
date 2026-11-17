@@ -12,9 +12,10 @@ Generate host-specific rule files, MCP configs, and single-file Knowledge bundle
 python3 scripts/setup_harness.py --host all
 ```
 
-Or target a single host (`antigravity`, `gemini-cli`, `claude-code`, `claude-desktop`, `claude-web`, `chatgpt`, `codex`, `cursor`, `local-llm`, `openrouter`):
+Or target a single host (`antigravity`, `gemini-cli`, `gemini-hydrogen`, `claude-code`, `claude-desktop`, `claude-web`, `chatgpt`, `codex`, `cursor`, `local-llm`, `openrouter`):
 
 ```bash
+python3 scripts/setup_harness.py --host gemini-hydrogen
 python3 scripts/setup_harness.py --host claude-desktop
 python3 scripts/setup_harness.py --host chatgpt
 python3 scripts/setup_harness.py --host cursor --write-workspace-cursor
@@ -42,7 +43,7 @@ python3 scripts/setup_harness.py --host cursor --write-workspace-cursor
 2. Copy the `freecmo-core` block from `dist/hosts/claude_desktop_and_mcp_config.json` into your `claude_desktop_config.json`:
    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-3. Restart Claude Desktop. Claude now has live access to `freecmo_unit_economics`, `freecmo_promo_breakeven`, `freecmo_creator_commission_cap`, `freecmo_blended_mer`, `freecmo_utm_builder`, `freecmo_sync_platforms`, and `freecmo_weekly_brief`.
+3. Restart Claude Desktop. Claude now has live access to `freecmo_unit_economics`, `freecmo_promo_breakeven`, `freecmo_creator_commission_cap`, `freecmo_blended_mer`, `freecmo_churn_and_runway`, `freecmo_creative_fatigue`, `freecmo_ai_search_fanout_audit`, `freecmo_utm_builder`, `freecmo_sync_platforms`, and `freecmo_weekly_brief`.
 
 ### Claude Web (`claude.ai` Projects)
 1. Run `python3 scripts/setup_harness.py --host claude-web`.
@@ -69,11 +70,27 @@ python3 scripts/setup_harness.py --host cursor --write-workspace-cursor
 
 ---
 
-## 3. Local BYO-Machine LLMs (`$0` API Cost) & Cheaper Cloud AI (`OpenRouter` / `DeepSeek` / `Groq`)
+## 3. Gemini 4 Hydrogen (`$0` AI Studio Free Tier), Local BYO-Machine LLMs & OpenRouter
 
 You do **not** need an expensive IDE subscription to run FreeCMO. `scripts/cmo_runner.py` and `connectors/llm_router.py` execute the full harness from any terminal.
 
-### Option A — 100% Local Machine (`Ollama`, `LM Studio`, `vLLM`, `llama.cpp`)
+### Option A — Google Gemini 4 Hydrogen (`gemini-4-hydrogen` — `$0` Google AI Studio Free Tier + Multimodal Critique)
+`gemini-4-hydrogen` supports 1M context, tunable `LOW | MEDIUM | HIGH | XHIGH` agentic thinking levels, and native multimodal inspection of ad mockups, landing-page screenshots, and PDF decks:
+
+```bash
+python3 scripts/setup_harness.py --host gemini-hydrogen
+cp dist/hosts/env.gemini-hydrogen.example .env
+# Paste your free Google AI Studio GEMINI_API_KEY into .env
+python3 scripts/cmo_runner.py status --provider gemini-hydrogen
+python3 scripts/cmo_runner.py run-skill \
+  --provider gemini-hydrogen \
+  --thinking-level HIGH \
+  --skill landing-page-cro-audit \
+  --attach path/to/landing-page-screenshot.png \
+  --brief "Audit hero message match, CTA clarity, and trust signals"
+```
+
+### Option B — 100% Local Machine (`Ollama`, `LM Studio`, `vLLM`, `llama.cpp`)
 1. Install [Ollama](https://ollama.com) and pull a capable local model:
    ```bash
    ollama pull qwen2.5:14b
@@ -93,15 +110,15 @@ You do **not** need an expensive IDE subscription to run FreeCMO. `scripts/cmo_r
    python3 scripts/cmo_runner.py run-skill --skill editorial-blog-linkedin-writer --brief "Write an answer-first SEO blog post + LinkedIn edition on standing desk ergonomics"
    ```
 
-### Option B — OpenRouter, DeepSeek, Groq, or Together AI (~85–95% Lower Cost)
-Route fast worker subtasks to ultra-low-cost models (`deepseek/deepseek-chat`, `llama-3.3-70b-versatile`) while reserving reasoning models (`deepseek/deepseek-r1`) for orchestration:
+### Option C — OpenRouter, DeepSeek, Groq, or Together AI (~85–95% Lower Cost)
+Route fast worker subtasks to ultra-low-cost models (`deepseek/deepseek-chat`, `llama-3.3-70b-versatile`), multimodal creative audits to `google/gemini-4-hydrogen`, and orchestration to reasoning models (`deepseek/deepseek-r1`):
 
 ```bash
 python3 scripts/setup_harness.py --host openrouter
 cp dist/hosts/env.openrouter.example .env
 # Add your OPENROUTER_API_KEY (or DEEPSEEK_API_KEY / GROQ_API_KEY / TOGETHER_API_KEY) in .env
 python3 scripts/cmo_runner.py status --provider openrouter
-python3 scripts/cmo_runner.py run-skill --provider openrouter --skill comms-press-release-writer --brief "Announcing our v2.0 SOC2 release"
+python3 scripts/cmo_runner.py run-skill --provider openrouter --skill comms-press-release-writer --brief "Announcing our SOC 2 Type II compliance certification"
 ```
 
 ---

@@ -11,6 +11,7 @@
 - [ad-creative-angle-matrix](./skills/social/ad-creative-angle-matrix/SKILL.md): Build visual-dna timed storyboards (0-4s/4-10s/CTA) and falsifiable ad angles from winners.
 - [aeo-entity-readiness](./skills/search-organic/aeo-entity-readiness/SKILL.md): Score 10-prompt AI citation share, entity gaps, and answer-first page priorities for GEO/AEO.
 - [blended-mer-reconciler](./skills/analytics/blended-mer-reconciler/SKILL.md): Reconcile blended MER, separate branded vs non-branded ROAS, and evaluate stop-loss triggers.
+- [churn-winback-engine](./skills/lifecycle-cro/churn-winback-engine/SKILL.md): Diagnose logo churn, NRR, J-curve ad-scaling cash troughs, and margin-safe winback sequences.
 - [cmo-init](./skills/core/cmo-init/SKILL.md): Initialize brand-truth.md and visual-dna.json from URL or repo with draft_pending_review lock.
 - [comms-press-release-writer](./skills/content-comms/comms-press-release-writer/SKILL.md): Draft AP-style press releases, launch announcements, media pitches, and incident comms grounded in verified facts.
 - [community-pain-radar](./skills/social/community-pain-radar/SKILL.md): Mine Reddit, HN, and forums in FTS5 radar.db for pain clusters with mandatory FTC disclosures.
@@ -22,8 +23,10 @@
 - [google-ads-smb-audit](./skills/search-paid/google-ads-smb-audit/SKILL.md): Audit SMB Google Ads campaigns for budget floors, conversion volume, and auto-apply traps.
 - [gsc-query-drift-triage](./skills/search-organic/gsc-query-drift-triage/SKILL.md): Triage Google Search Console query impression/position drift and paid-SEO cannibalization.
 - [landing-page-cro-audit](./skills/lifecycle-cro/landing-page-cro-audit/SKILL.md): Audit landing page speed, above-the-fold CTA clarity, offer friction, and A/B test power.
+- [launch-campaign-playbook](./skills/core/launch-campaign-playbook/SKILL.md): Orchestrate T-21 to T+7 product, seasonal, and promo launches with pacing and margin circuit breakers.
 - [local-seo-gbp-optimizer](./skills/search-organic/local-seo-gbp-optimizer/SKILL.md): Optimize Google Business Profile categories, LocalBusiness schema, and review velocity.
 - [meta-ads-smb-audit](./skills/social/meta-ads-smb-audit/SKILL.md): Audit Meta Ads spend floors, Advantage+ defaults, CAPI deduplication, and 14-day stop-losses.
+- [review-referral-flywheel](./skills/lifecycle-cro/review-referral-flywheel/SKILL.md): Engineer compliant customer review velocity and CAC-capped double-sided referral loops.
 - [search-term-negative-miner](./skills/search-paid/search-term-negative-miner/SKILL.md): Mine Google Ads search term reports via n-gram clustering to cut zero-conversion waste spend.
 - [seo-geo-code-pr](./skills/search-organic/seo-geo-code-pr/SKILL.md): Stage isolated git branch PRs adding canonicals, meta tags, FAQPage JSON-LD, and AI robots.txt.
 - [social-seo-repurposer](./skills/social/social-seo-repurposer/SKILL.md): Turn /cmo run-with-this assets into Instagram, Facebook, LinkedIn, X, TikTok/Shorts & Reddit social SEO drafts.

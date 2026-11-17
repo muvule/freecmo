@@ -15,8 +15,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from calculators import safe_parse_yaml, validate_json_schema
 from calculators.budget_gate import evaluate_budget_gate
+from calculators.creative_fatigue import detect_creative_fatigue
 from calculators.experiment_math import evaluate_disproof_condition
 from calculators.mer import allocate_acquisition_vs_retention, evaluate_stop_losses
+from calculators.runway_churn import compute_churn_and_nrr, simulate_cash_flow_runway
 from connectors.approval_gate import check_strategy_lock
 
 
@@ -31,6 +33,9 @@ PRODUCTION_SKILLS = {
     "comms-press-release-writer",
     "competitor-battlecard-pricing",
     "creator-affiliate-partnerships",
+    "churn-winback-engine",
+    "launch-campaign-playbook",
+    "review-referral-flywheel",
     "seo-geo-code-pr",
     "aeo-entity-readiness",
     "landing-page-cro-audit",
@@ -236,6 +241,90 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
             }
         )
 
+    # 2b. Leaky-Bucket Churn & J-Curve Working-Capital Runway Circuit Breakers
+    if isinstance(state.get("churn_metrics"), dict):
+        churn_res = compute_churn_and_nrr(**state["churn_metrics"])
+        if churn_res.get("status") == "ok" and churn_res.get("leaky_bucket_alert") is True:
+            circuit_breakers.append(
+                {
+                    "alert_id": "cb-leaky-bucket-churn",
+                    "severity": "critical",
+                    "message": (
+                        f"Leaky-bucket retention alert (monthly NRR={churn_res['monthly_nrr_pct']}%, "
+                        f"implied lifetime={churn_res['implied_lifetime_months']}m); freeze cold paid scaling."
+                    ),
+                    "recommended_pause": True,
+                }
+            )
+            if len(decisions) < 5:
+                mrr_at_risk = round(
+                    float(state["churn_metrics"].get("starting_mrr_usd", 0.0))
+                    * (float(state["churn_metrics"].get("monthly_revenue_churn_pct", 0.0)) / 100.0),
+                    2,
+                )
+                decisions.append(
+                    {
+                        "rank": len(decisions) + 1,
+                        "priority": "P0",
+                        "decision_title": "Freeze cold paid scaling and deploy churn win-back engine",
+                        "rationale": (
+                            f"Monthly NRR is {churn_res['monthly_nrr_pct']}% with "
+                            f"{churn_res['implied_lifetime_months']}m implied lifetime; plug churn before buying new CAC."
+                        ),
+                        "dollar_impact_usd": mrr_at_risk,
+                        "disproof_condition": "monthly_logo_churn_pct >= baseline after 30-day cancel-deflection & dunning rollout",
+                        "source_receipts": ["calculators/runway_churn.py#compute_churn_and_nrr"],
+                    }
+                )
+                subtasks.append(
+                    {
+                        "subtask_id": "subtask-churn-winback",
+                        "skill_names": ["churn-winback-engine", "email-deliverability-flows"],
+                        "model_tier": "balanced_worker",
+                        "max_tool_calls": 6,
+                        "max_tokens_budget": 16000,
+                        "requires_reviewer": True,
+                        "is_production_mutation": False,
+                        "data_slice_pointers": ["data/radar.db"],
+                        "file_touch_boundaries": {
+                            "allowed_paths": ["data/offload/*"],
+                            "forbidden_paths": [".agents/guardrails.yaml"],
+                        },
+                        "goal": "Design pre-dunning recovery, cancel-flow pause/downgrade deflection, and 30/60/90d win-back sequence.",
+                        "disproof_condition": "save_rate_on_cancel_flow < 0.10 after 100 cancel intents",
+                    }
+                )
+
+    if isinstance(state.get("cash_runway"), dict):
+        runway_res = simulate_cash_flow_runway(**state["cash_runway"])
+        if runway_res.get("status") == "ok" and runway_res.get("runway_safe") is False:
+            circuit_breakers.append(
+                {
+                    "alert_id": "cb-cash-runway-trough",
+                    "severity": "critical",
+                    "message": (
+                        f"J-curve cash trough (${runway_res['max_cash_trough_usd']:.0f}) leaves minimum cash "
+                        f"${runway_res['min_cash_balance_usd']:.0f} below 1-month operating buffer."
+                    ),
+                    "recommended_pause": True,
+                }
+            )
+            if len(decisions) < 5:
+                decisions.append(
+                    {
+                        "rank": len(decisions) + 1,
+                        "priority": "P0",
+                        "decision_title": "Throttle paid ad spend to protect working-capital cash runway",
+                        "rationale": (
+                            f"Upfront CAC creates a ${runway_res['max_cash_trough_usd']:.0f} cash trough before payback "
+                            f"(min balance ${runway_res['min_cash_balance_usd']:.0f}). Cap spend or shift to annual prepay."
+                        ),
+                        "dollar_impact_usd": float(runway_res["max_cash_trough_usd"]),
+                        "disproof_condition": "min_cash_balance_usd < monthly_outflow_usd under revised spend cap",
+                        "source_receipts": ["calculators/runway_churn.py#simulate_cash_flow_runway"],
+                    }
+                )
+
     # 3. Acquisition vs. Retention Reallocation
     if state.get("cohort_segments"):
         alloc = allocate_acquisition_vs_retention(
@@ -351,6 +440,46 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                 "disproof_condition": "geo_citation_share < 3 after 28 days",
             }
         )
+
+    # 5b. Ad Creative Fatigue Detection -> 0-3s Hook Rotation
+    if isinstance(state.get("ad_creatives"), list) and state.get("ad_creatives") and len(decisions) < 5:
+        fatigue_res = detect_creative_fatigue(state["ad_creatives"])
+        if fatigue_res.get("status") == "ok" and fatigue_res.get("fatigued_count", 0) > 0:
+            fatigued_list = fatigue_res["fatigued_creatives"]
+            fatigued_spend = round(sum(float(x.get("spend_usd", 0.0)) for x in fatigued_list), 2)
+            lead_ad = fatigued_list[0]
+            decisions.append(
+                {
+                    "rank": len(decisions) + 1,
+                    "priority": "P1",
+                    "decision_title": f"Rotate 0-3s hooks on {len(fatigued_list)} fatigued ad creative(s)",
+                    "rationale": (
+                        f"Lead ad '{lead_ad['ad_id']}' hit frequency {lead_ad['frequency']} with "
+                        f"{lead_ad['ctr_drop_pct']}% CTR decay from peak; keep targeting intact and swap opening hooks."
+                    ),
+                    "dollar_impact_usd": fatigued_spend,
+                    "disproof_condition": "replacement_hook_ctr <= fatigued_ad_current_ctr after 2500 impressions",
+                    "source_receipts": ["calculators/creative_fatigue.py#detect_creative_fatigue"],
+                }
+            )
+            subtasks.append(
+                {
+                    "subtask_id": "subtask-creative-fatigue-refresh",
+                    "skill_names": ["ad-creative-angle-matrix", "display-native-ad-studio"],
+                    "model_tier": "multimodal_creative",
+                    "max_tool_calls": 6,
+                    "max_tokens_budget": 16000,
+                    "requires_reviewer": True,
+                    "is_production_mutation": False,
+                    "data_slice_pointers": ["data/exports/meta_ads.csv"],
+                    "file_touch_boundaries": {
+                        "allowed_paths": ["data/offload/*"],
+                        "forbidden_paths": [".agents/guardrails.yaml"],
+                    },
+                    "goal": f"Stage 3 fresh 0-3s visual/copy hooks for fatigued ad {lead_ad['ad_id']} in PAUSED state.",
+                    "disproof_condition": "ctr < 0.010 after 2500 impressions",
+                }
+            )
 
     # 6. Organic Social SEO / Run-With-This -> Paid Creative Seeding
     min_mult = float(org_paid.get("social_to_paid_min_median_multiplier", 2.0))

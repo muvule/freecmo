@@ -46,6 +46,20 @@
     },
     {
       "calculators": [
+        "runway_churn",
+        "cac_ltv"
+      ],
+      "category": "lifecycle-cro",
+      "description": "Diagnose logo churn, NRR, J-curve ad-scaling cash troughs, and margin-safe winback sequences.",
+      "last_updated": "2026-11-16",
+      "name": "churn-winback-engine",
+      "package": "lifecycle",
+      "source_path": "skills/lifecycle-cro/churn-winback-engine/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
         "cac_ltv",
         "budget_gate"
       ],
@@ -197,6 +211,20 @@
     },
     {
       "calculators": [
+        "creative_fatigue",
+        "cac_ltv"
+      ],
+      "category": "core",
+      "description": "Orchestrate T-21 to T+7 product, seasonal, and promo launches with pacing and margin circuit breakers.",
+      "last_updated": "2026-11-16",
+      "name": "launch-campaign-playbook",
+      "package": "core",
+      "source_path": "skills/core/launch-campaign-playbook/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
         "budget_gate",
         "experiment_math"
       ],
@@ -220,6 +248,19 @@
       "name": "meta-ads-smb-audit",
       "package": "social",
       "source_path": "skills/social/meta-ads-smb-audit/SKILL.md",
+      "status": "active",
+      "tier": 1
+    },
+    {
+      "calculators": [
+        "runway_churn"
+      ],
+      "category": "lifecycle-cro",
+      "description": "Engineer compliant customer review velocity and CAC-capped double-sided referral loops.",
+      "last_updated": "2026-11-16",
+      "name": "review-referral-flywheel",
+      "package": "lifecycle",
+      "source_path": "skills/lifecycle-cro/review-referral-flywheel/SKILL.md",
       "status": "active",
       "tier": 1
     },
@@ -305,5 +346,5 @@
       "tier": 1
     }
   ],
-  "total_source_skills": 22
+  "total_source_skills": 25
 }

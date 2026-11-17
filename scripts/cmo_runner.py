@@ -23,7 +23,13 @@ from connectors.ad_platform_sync import detect_configured_platforms, sync_all_pl
 from connectors.approval_gate import check_strategy_lock
 from connectors.context_offloader import build_ordered_context, offload_if_oversized
 from connectors.env_loader import load_dotenv_file
-from connectors.llm_router import MODEL_TIERS, complete_prompt, resolve_llm_route
+from connectors.llm_router import (
+    GEMINI_THINKING_LEVELS,
+    MODEL_TIERS,
+    complete_prompt,
+    load_attachment_file,
+    resolve_llm_route,
+)
 from connectors.sanitizer import sanitize_untrusted_text
 from scripts.next_action import PRODUCTION_SKILLS, generate_next_actions
 from scripts.validate_skills import split_frontmatter
@@ -123,6 +129,8 @@ def cmd_run_skill(
     dry_run: bool,
     env: dict[str, str],
     data_slice: Any = None,
+    thinking_level: str | None = None,
+    attachment_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     lock_status = check_strategy_lock(repo_root / ".agents" / "brand-truth.md")
     if skill_name not in BOOTSTRAP_SAFE_SKILLS and (skill_name in PRODUCTION_SKILLS or lock_status != "locked"):
@@ -173,7 +181,12 @@ def cmd_run_skill(
         instincts_md=instincts_md,
         volatile_slice=volatile,
     )
+    attachments: list[dict[str, str]] = []
+    for ap in attachment_paths or []:
+        attachments.append(load_attachment_file(ap))
+
     route = resolve_llm_route(model_tier=model_tier, provider_override=provider, env=env)
+    effective_thinking = thinking_level or route.get("thinking_level")
     if dry_run:
         res: dict[str, Any] = {
             "dry_run": True,
@@ -181,7 +194,10 @@ def cmd_run_skill(
             "route": route,
             "prompt_chars": len(ordered["full_prompt"]),
             "kv_prefix_chars": len(ordered["prefix_segments"]),
+            "attachments": [{"filename": a["filename"], "mime_type": a["mime_type"]} for a in attachments],
         }
+        if effective_thinking:
+            res["thinking_level"] = effective_thinking
         if offload_info is not None:
             res["data_slice_offloaded"] = offload_info["offloaded"]
             if offload_info["offloaded"]:
@@ -194,6 +210,8 @@ def cmd_run_skill(
         model_tier=model_tier,
         provider_override=provider,
         env=env,
+        thinking_level=thinking_level,
+        attachments=attachments or None,
     )
     res = {
         "dry_run": False,
@@ -201,6 +219,10 @@ def cmd_run_skill(
         "route": route,
         "output": completion["content"],
     }
+    if completion.get("thinking_level"):
+        res["thinking_level"] = completion["thinking_level"]
+    if attachments:
+        res["attachments"] = [{"filename": a["filename"], "mime_type": a["mime_type"]} for a in attachments]
     if offload_info is not None:
         res["data_slice_offloaded"] = offload_info["offloaded"]
     return res
@@ -216,9 +238,12 @@ def _load_cli_text_or_json(raw_arg: str) -> Any:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="FreeCMO standalone CLI runner (Local LLM, OpenRouter, or Cloud).")
+    parser = argparse.ArgumentParser(description="FreeCMO standalone CLI runner (Gemini 4 Hydrogen, Local LLM, OpenRouter, or Cloud).")
     parser.add_argument("--repo-root", default=str(REPO_ROOT), help="Workspace root")
-    parser.add_argument("--provider", help="Override LLM provider (ollama | lmstudio | openrouter | deepseek | groq | openai | anthropic | gemini)")
+    parser.add_argument(
+        "--provider",
+        help="Override LLM provider (gemini-hydrogen | gemini | ollama | lmstudio | openrouter | deepseek | groq | openai | anthropic)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="Show LLM provider routing, configured ad platforms, and strategy lock status")
@@ -234,11 +259,13 @@ def main(argv: list[str] | None = None) -> int:
     p_sync = sub.add_parser("sync-brief", help="Sync ad/revenue platforms and emit Weekly Composer's Brief")
     p_sync.add_argument("--demo-fixture", action="store_true")
 
-    p_run = sub.add_parser("run-skill", help="Execute a specialist FreeCMO skill via local or cloud LLM")
+    p_run = sub.add_parser("run-skill", help="Execute a specialist FreeCMO skill via Gemini 4 Hydrogen, local, or cloud LLM")
     p_run.add_argument("--skill", required=True, help="Skill folder name (e.g., editorial-blog-linkedin-writer)")
     p_run.add_argument("--brief", required=True, help="Subtask brief text or path to a file")
     p_run.add_argument("--data-slice", help="Optional JSON string or file path for telemetry/research data slice (auto-offloaded >1500 tokens)")
     p_run.add_argument("--tier", choices=MODEL_TIERS, default="balanced_worker")
+    p_run.add_argument("--thinking-level", choices=GEMINI_THINKING_LEVELS, help="Gemini 4 thinking level (LOW | MEDIUM | HIGH | XHIGH)")
+    p_run.add_argument("--attach", action="append", default=[], help="Attach image, PDF, or Office file for multimodal critique (repeatable)")
     p_run.add_argument("--dry-run", action="store_true", help="Verify lock, KV-cache prompt assembly, and model route without API call")
 
     args = parser.parse_args(argv)
@@ -279,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             env=env,
             data_slice=parsed_slice,
+            thinking_level=args.thinking_level,
+            attachment_paths=args.attach or None,
         )
     else:
         raise ValueError(f"Unknown command {args.command}")

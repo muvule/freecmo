@@ -22,7 +22,14 @@ from calculators.cac_ltv import (
     compute_creator_commission_cap,
     compute_promo_breakeven,
 )
+from calculators.creative_fatigue import compute_launch_pacing_guard, detect_creative_fatigue
+from calculators.fanout_audit import audit_page_fanout_readiness
 from calculators.mer import compute_blended_mer
+from calculators.runway_churn import (
+    compute_churn_and_nrr,
+    compute_referral_and_review_economics,
+    simulate_cash_flow_runway,
+)
 from connectors.ad_platform_sync import sync_all_platforms
 from connectors.env_loader import load_dotenv_file
 from connectors.utm_governance import build_governed_utm_url
@@ -134,6 +141,79 @@ MCP_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "freecmo_churn_and_runway",
+        "description": "Compute SaaS/SMB churn & NRR, 12-month J-curve cash runway trough, or referral k-factor & review targets.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["churn_nrr", "cash_runway", "referral_loop"],
+                    "default": "churn_nrr",
+                },
+                "starting_mrr_usd": {"type": "number"},
+                "monthly_logo_churn_pct": {"type": "number"},
+                "monthly_revenue_churn_pct": {"type": "number"},
+                "monthly_expansion_pct": {"type": "number"},
+                "new_customers_per_month": {"type": "number"},
+                "available_cash_usd": {"type": "number"},
+                "monthly_ad_spend_usd": {"type": "number"},
+                "allowable_cac_usd": {"type": "number"},
+                "monthly_gross_profit_per_customer_usd": {"type": "number"},
+                "horizon_months": {"type": "integer", "default": 12},
+                "fixed_marketing_ops_usd": {"type": "number"},
+                "paid_cac_usd": {"type": "number"},
+                "referral_invite_rate": {"type": "number"},
+                "referral_conversion_rate": {"type": "number"},
+                "referrer_reward_usd": {"type": "number"},
+                "friend_discount_cost_usd": {"type": "number"},
+                "current_reviews": {"type": "number"},
+                "current_rating": {"type": "number"},
+                "target_rating": {"type": "number"},
+                "competitor_reviews": {"type": "number"},
+            },
+        },
+    },
+    {
+        "name": "freecmo_creative_fatigue",
+        "description": "Detect ad creative fatigue (frequency saturation + CTR decay / CPA inflation) or evaluate T-21..T+7 launch budget pacing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["fatigue", "launch_pacing"],
+                    "default": "fatigue",
+                },
+                "creatives": {"type": "array", "items": {"type": "object"}},
+                "max_frequency": {"type": "number", "default": 3.2},
+                "ctr_drop_threshold_pct": {"type": "number", "default": 20.0},
+                "cpa_inflation_threshold_pct": {"type": "number", "default": 25.0},
+                "launch_budget_usd": {"type": "number"},
+                "days_elapsed": {"type": "number"},
+                "total_launch_days": {"type": "number"},
+                "spend_to_date_usd": {"type": "number"},
+                "revenue_to_date_usd": {"type": "number"},
+                "gross_margin_pct": {"type": "number"},
+                "target_mer": {"type": "number", "default": 2.5},
+            },
+        },
+    },
+    {
+        "name": "freecmo_ai_search_fanout_audit",
+        "description": "Audit HTML or Markdown pages for Google AI Mode (Gemini 4 Hydrogen) Query Fan-Out readiness, comparison tables, schema, and crawler access.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string"},
+                "file_path": {"type": "string"},
+                "primary_query": {"type": "string", "default": ""},
+                "content_format": {"type": "string", "enum": ["auto", "html", "markdown", "md"], "default": "auto"},
+                "robots_txt": {"type": "string"},
+            },
+        },
+    },
+    {
         "name": "freecmo_weekly_brief",
         "description": "Generate Dual Readout Weekly Composer's Brief from latest synced telemetry state.",
         "inputSchema": {
@@ -153,7 +233,7 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
     elif not isinstance(arguments, dict):
         raise ValueError("MCP tool arguments must be a JSON object")
     else:
-        args = arguments
+        args = dict(arguments)
 
     if name == "freecmo_unit_economics":
         return compute_cac_ltv(**args)
@@ -165,6 +245,31 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
         return compute_blended_mer(**args)
     if name == "freecmo_utm_builder":
         return build_governed_utm_url(**args)
+    if name == "freecmo_churn_and_runway":
+        mode = str(args.pop("mode", "churn_nrr"))
+        if mode == "cash_runway":
+            return simulate_cash_flow_runway(**args)
+        if mode == "referral_loop":
+            return compute_referral_and_review_economics(**args)
+        if mode == "churn_nrr":
+            return compute_churn_and_nrr(**args)
+        raise ValueError(f"Unsupported freecmo_churn_and_runway mode: {mode!r}")
+    if name == "freecmo_creative_fatigue":
+        mode = str(args.pop("mode", "fatigue"))
+        if mode == "launch_pacing":
+            return compute_launch_pacing_guard(**args)
+        if mode == "fatigue":
+            return detect_creative_fatigue(**args)
+        raise ValueError(f"Unsupported freecmo_creative_fatigue mode: {mode!r}")
+    if name == "freecmo_ai_search_fanout_audit":
+        fp = args.pop("file_path", None)
+        content = args.pop("content", None)
+        if fp:
+            target = (repo_root / str(fp)).resolve() if not pathlib.Path(str(fp)).is_absolute() else pathlib.Path(str(fp)).resolve()
+            if not target.is_relative_to(repo_root.resolve()):
+                raise ValueError("file_path must reside inside repository workspace")
+            content = target.read_text(encoding="utf-8")
+        return audit_page_fanout_readiness(content=content, **args)
     if name == "freecmo_validate_creative_spec":
         spec = args.get("spec")
         if not isinstance(spec, dict):

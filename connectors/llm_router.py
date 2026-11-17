@@ -8,8 +8,11 @@ Supports:
 
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
+import pathlib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,10 +54,22 @@ PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
         "key_env": "GEMINI_API_KEY",
         "requires_key": True,
         "models": {
-            "fast_decider": "gemini-2.5-flash",
-            "balanced_worker": "gemini-2.5-flash",
-            "deep_orchestrator": "gemini-2.5-pro",
-            "multimodal_creative": "gemini-2.5-flash",
+            "fast_decider": "gemini-3.5-flash-lite",
+            "balanced_worker": "gemini-4-hydrogen",
+            "deep_orchestrator": "gemini-4-hydrogen",
+            "multimodal_creative": "gemini-4-hydrogen",
+        },
+    },
+    "gemini-hydrogen": {
+        "protocol": "gemini_generate",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "key_env": "GEMINI_API_KEY",
+        "requires_key": True,
+        "models": {
+            "fast_decider": "gemini-3.5-flash-lite",
+            "balanced_worker": "gemini-4-hydrogen",
+            "deep_orchestrator": "gemini-4-hydrogen",
+            "multimodal_creative": "gemini-4-hydrogen",
         },
     },
     "openrouter": {
@@ -66,7 +81,7 @@ PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
             "fast_decider": "deepseek/deepseek-chat",
             "balanced_worker": "deepseek/deepseek-chat",
             "deep_orchestrator": "deepseek/deepseek-r1",
-            "multimodal_creative": "google/gemini-2.5-flash",
+            "multimodal_creative": "google/gemini-4-hydrogen",
         },
     },
     "deepseek": {
@@ -138,7 +153,43 @@ TIER_ENV_OVERRIDES = {
     "multimodal_creative": "CMO_MULTIMODAL_MODEL",
 }
 
+GEMINI_THINKING_LEVELS = ("LOW", "MEDIUM", "HIGH", "XHIGH")
+SUPPORTED_ATTACHMENT_MIMES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".odt": "application/vnd.oasis.opendocument.text",
+    ".ods": "application/vnd.oasis.opendocument.spreadsheet",
+    ".odp": "application/vnd.oasis.opendocument.presentation",
+}
+
 LLMTransportFn = Callable[[urllib.request.Request], dict[str, Any]]
+
+
+def load_attachment_file(file_path: str | pathlib.Path, max_bytes: int = 15 * 1024 * 1024) -> dict[str, str]:
+    """Read an image, PDF, or Office document into a Gemini/multimodal attachment dict."""
+    p = pathlib.Path(file_path).resolve()
+    if not p.exists() or not p.is_file():
+        raise FileNotFoundError(f"Attachment file not found: {file_path!r}")
+    size = p.stat().st_size
+    if size > max_bytes:
+        raise ValueError(f"Attachment {p.name} exceeds {max_bytes} bytes inline limit ({size} bytes)")
+    ext = p.suffix.lower()
+    mime = SUPPORTED_ATTACHMENT_MIMES.get(ext) or mimetypes.guess_type(p.name)[0]
+    if not mime:
+        raise ValueError(f"Unsupported or unknown MIME type for attachment {p.name}")
+    raw = p.read_bytes()
+    return {
+        "filename": p.name,
+        "mime_type": mime,
+        "data_b64": base64.b64encode(raw).decode("ascii"),
+    }
 
 
 def _default_llm_transport(req: urllib.request.Request) -> dict[str, Any]:
@@ -155,6 +206,21 @@ def _default_llm_transport(req: urllib.request.Request) -> dict[str, Any]:
         raise RuntimeError(f"LLM API HTTP {exc.code} from {urllib.parse.urlparse(req.full_url).hostname}") from None
     except urllib.error.URLError as exc:
         raise RuntimeError(f"LLM API connection failed: {exc.reason}") from None
+
+
+def _resolve_thinking_level(model: str, thinking_level: str | None, env: dict[str, str]) -> str | None:
+    raw = (thinking_level or env.get("GEMINI_THINKING_LEVEL") or "").strip().upper()
+    if not raw:
+        return None
+    if raw not in GEMINI_THINKING_LEVELS:
+        raise ValueError(
+            f"Unsupported Gemini thinking level {raw!r}; choose from {GEMINI_THINKING_LEVELS} "
+            "(note: MINIMAL is invalid on Gemini 4 and triggers HTTP 400)"
+        )
+    m_low = model.lower()
+    if raw == "XHIGH" and ("carbon" in m_low or "argon" in m_low):
+        return "HIGH"
+    return raw
 
 
 def resolve_llm_route(
@@ -183,17 +249,17 @@ def resolve_llm_route(
         raise ValueError(f"Unsupported LLM provider {requested!r}; supported={sorted(PROVIDER_DEFAULTS)}")
 
     spec = PROVIDER_DEFAULTS[requested]
-    base_url_env = f"{requested.upper()}_BASE_URL"
-    base_url = (e.get(base_url_env) or spec["base_url"]).rstrip("/")
+    base_prefix = "GEMINI" if requested == "gemini-hydrogen" else requested.upper()
+    base_url = (e.get(f"{base_prefix}_BASE_URL") or spec["base_url"]).rstrip("/")
     validate_endpoint_url(base_url)
 
-    model_env = f"{requested.upper()}_MODEL"
+    model_env = f"{base_prefix}_MODEL"
     tier_override = (e.get(TIER_ENV_OVERRIDES[model_tier]) or "").strip()
     provider_model_override = (e.get(model_env) or "").strip()
     model = tier_override or provider_model_override or spec["models"][model_tier]
 
     api_key = (e.get(spec["key_env"]) or "").strip()
-    return {
+    out = {
         "provider": requested,
         "protocol": spec["protocol"],
         "base_url": base_url,
@@ -202,6 +268,11 @@ def resolve_llm_route(
         "requires_key": spec["requires_key"],
         "key_configured": bool(api_key) or not spec["requires_key"],
     }
+    if spec["protocol"] == "gemini_generate":
+        tl = _resolve_thinking_level(model, None, e)
+        if tl:
+            out["thinking_level"] = tl
+    return out
 
 
 def complete_prompt(
@@ -213,8 +284,10 @@ def complete_prompt(
     max_tokens: int = 2048,
     env: dict[str, str] | None = None,
     transport: LLMTransportFn | None = None,
+    thinking_level: str | None = None,
+    attachments: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Execute a completion call across OpenAI-compatible, Anthropic, Gemini, or local Ollama/LM Studio."""
+    """Execute a completion call across Gemini 4 Hydrogen, OpenRouter, Frontier APIs, or local Ollama/LM Studio."""
     e = env if env is not None else dict(os.environ)
     tx = transport or _default_llm_transport
     route = resolve_llm_route(model_tier=model_tier, provider_override=provider_override, env=e)
@@ -242,13 +315,25 @@ def complete_prompt(
         if provider == "openrouter":
             headers["HTTP-Referer"] = "https://github.com/muvule/freecmo"
             headers["X-Title"] = "FreeCMO"
+
+        if attachments:
+            user_content: Any = [{"type": "text", "text": user_prompt}]
+            for att in attachments:
+                mime = att["mime_type"]
+                if mime.startswith("image/"):
+                    user_content.append(
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{att['data_b64']}"}}
+                    )
+        else:
+            user_content = user_prompt
+
         payload = {
             "model": model,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": user_content},
             ],
         }
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
@@ -289,10 +374,30 @@ def complete_prompt(
             "Content-Type": "application/json",
             "x-goog-api-key": api_key,
         }
+        parts_payload: list[dict[str, Any]] = [{"text": user_prompt}]
+        for att in attachments or []:
+            parts_payload.append(
+                {
+                    "inlineData": {
+                        "mimeType": att["mime_type"],
+                        "data": att["data_b64"],
+                    }
+                }
+            )
+
+        is_gemini3_or_4 = ("gemini-3" in model.lower()) or ("gemini-4" in model.lower())
+        gen_config: dict[str, Any] = {"maxOutputTokens": max_tokens}
+        if not is_gemini3_or_4:
+            gen_config["temperature"] = temperature
+
+        resolved_tl = _resolve_thinking_level(model, thinking_level, e)
+        if resolved_tl:
+            gen_config["thinkingConfig"] = {"thinkingLevel": resolved_tl}
+
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+            "contents": [{"role": "user", "parts": parts_payload}],
+            "generationConfig": gen_config,
         }
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         resp = tx(req)
@@ -301,7 +406,17 @@ def complete_prompt(
             raise RuntimeError(f"{provider} returned empty candidates")
         first_cand = cands[0]
         parts = ((first_cand.get("content") or {}).get("parts")) or []
-        text = "\n".join(str(p.get("text", "")) for p in parts if isinstance(p, dict) and "text" in p)
-        return {"provider": provider, "model": model, "model_tier": model_tier, "content": text}
+        text_chunks = [
+            str(p.get("text", ""))
+            for p in parts
+            if isinstance(p, dict) and "text" in p and not p.get("thought")
+        ]
+        if not text_chunks:
+            text_chunks = [str(p.get("text", "")) for p in parts if isinstance(p, dict) and "text" in p]
+        text = "\n".join(text_chunks)
+        out: dict[str, Any] = {"provider": provider, "model": model, "model_tier": model_tier, "content": text}
+        if resolved_tl:
+            out["thinking_level"] = resolved_tl
+        return out
 
     raise ValueError(f"Unhandled protocol {protocol!r}")

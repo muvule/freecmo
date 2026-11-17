@@ -29,6 +29,7 @@ SUPPORTED_HOSTS = (
     "all",
     "antigravity",
     "gemini-cli",
+    "gemini-hydrogen",
     "claude-code",
     "claude-desktop",
     "claude-web",
@@ -74,6 +75,10 @@ Always use Python Code Interpreter (never mental math) for every number:
 - `promo_required_volume_lift_pct = ((baseline_gp / (aov_usd * (1 - discount_pct/100) - cogs)) - 1) * 100`
 - `creator_max_payout_usd = allowable_cac_usd - paid_whitelisting_cpa_usd - (creator_flat_fee_usd / expected_conversions)`
 - `blended_mer = total_revenue_usd / total_marketing_spend_usd`
+- `nrr_pct = ((starting_mrr + expansion_mrr - contraction_mrr - churned_mrr) / starting_mrr) * 100` (freeze cold acquisition scaling if `monthly_logo_churn_pct >= 8%`)
+- `j_curve_cash_check`: simulate 12-month working-capital cash trough when CAC is paid upfront at Day 0; block ad spend increases that dip below `min_cash_buffer_usd`
+- `referral_k_factor = referral_invite_rate * referral_conversion_rate`; `effective_blended_cac_usd = paid_cac_usd / (1 + k_factor)` (ensure `referrer_reward_usd + friend_discount_cost_usd <= allowable_cac_usd`)
+- `creative_fatigue`: flag ads with `frequency >= 3.2` and `ctr_decay_from_peak_pct >= 20%` (or `cpa_inflation_pct >= 30%`) for 0-3s hook rotation without resetting targeting
 
 ## 3. Channel Coverage & Creative Studio Rules
 - **Paid & Organic Search:** Cross-check Google Ads vs. Search Console. Suppress paid brand/exact queries where organic rank <= 2 and competitor impression share < 5%. Seed SEO/GEO pages from converting paid terms (`conversions >= 3`, `CPA <= allowable_cac_usd`).
@@ -193,6 +198,23 @@ def generate_host_configs(
         )
         written.append(str(local_env))
 
+    if "gemini-hydrogen" in targets:
+        hyd_env = out_dir / "env.gemini-hydrogen.example"
+        hyd_env.write_text(
+            "# FreeCMO — Google Gemini 4 Hydrogen Preset ($0 Google AI Studio Free Tier or Low-Cost Paid)\n"
+            "CMO_LLM_PROVIDER=gemini-hydrogen\n"
+            "GEMINI_API_KEY=AIzaSy-replace-with-google-ai-studio-key\n"
+            "GEMINI_MODEL=gemini-4-hydrogen\n"
+            "GEMINI_THINKING_LEVEL=HIGH\n"
+            "CMO_FAST_MODEL=gemini-3.5-flash-lite\n"
+            "CMO_WORKER_MODEL=gemini-4-hydrogen\n"
+            "CMO_ORCHESTRATOR_MODEL=gemini-4-hydrogen\n"
+            "CMO_MULTIMODAL_MODEL=gemini-4-hydrogen\n"
+            "# Supported GEMINI_THINKING_LEVEL values on gemini-4-hydrogen: LOW | MEDIUM | HIGH | XHIGH\n",
+            encoding="utf-8",
+        )
+        written.append(str(hyd_env))
+
     if "openrouter" in targets:
         or_env = out_dir / "env.openrouter.example"
         or_env.write_text(
@@ -203,7 +225,7 @@ def generate_host_configs(
             "CMO_FAST_MODEL=deepseek/deepseek-chat\n"
             "CMO_WORKER_MODEL=deepseek/deepseek-chat\n"
             "CMO_ORCHESTRATOR_MODEL=deepseek/deepseek-r1\n"
-            "CMO_MULTIMODAL_MODEL=google/gemini-2.5-flash\n",
+            "CMO_MULTIMODAL_MODEL=google/gemini-4-hydrogen\n",
             encoding="utf-8",
         )
         written.append(str(or_env))

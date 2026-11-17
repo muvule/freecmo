@@ -83,6 +83,24 @@ RUNTIME_PROFILES: dict[str, list[str]] = {
         "seo-geo-code-pr",
         "email-deliverability-flows",
     ],
+    "retention-launch": [
+        "weekly-cmo-brief",
+        "unit-economics-floors",
+        "blended-mer-reconciler",
+        "churn-winback-engine",
+        "launch-campaign-playbook",
+        "review-referral-flywheel",
+        "email-deliverability-flows",
+        "landing-page-cro-audit",
+        "creator-affiliate-partnerships",
+        "ad-creative-angle-matrix",
+        "display-native-ad-studio",
+        "meta-ads-smb-audit",
+        "google-ads-smb-audit",
+        "aeo-entity-readiness",
+        "seo-geo-code-pr",
+        "comms-press-release-writer",
+    ],
 }
 
 
