@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import sys
 from typing import Any
+
+_REPO_ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 from calculators import ok_result, to_float, unknown_result
 
@@ -189,6 +194,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--monthly-orders-per-customer", type=float, default=1.0)
     parser.add_argument("--actual-spend-usd", type=float)
     parser.add_argument("--new-customers", type=float)
+    parser.add_argument("--allowable-cac-usd", type=float)
+    parser.add_argument("--paid-whitelisting-cpa-usd", type=float, default=0.0)
+    parser.add_argument("--creator-flat-fee-usd", type=float, default=0.0)
+    parser.add_argument("--expected-conversions", type=float, default=10.0)
     args = parser.parse_args(argv)
 
     if args.input:
@@ -205,6 +214,13 @@ def main(argv: list[str] | None = None) -> int:
             aov_usd=args.aov_usd,
             gross_margin_pct=args.gross_margin_pct,
             discount_pct=args.discount_pct,
+        )
+    elif args.mode == "creator_cap":
+        out = compute_creator_commission_cap(
+            allowable_cac_usd=args.allowable_cac_usd,
+            paid_whitelisting_cpa_usd=args.paid_whitelisting_cpa_usd,
+            creator_flat_fee_usd=args.creator_flat_fee_usd,
+            expected_conversions=args.expected_conversions,
         )
     else:
         out = compute_cac_ltv(

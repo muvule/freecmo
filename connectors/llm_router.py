@@ -146,7 +146,11 @@ def _default_llm_transport(req: urllib.request.Request) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
+            if not raw.strip():
+                raise RuntimeError("LLM API returned empty response body")
             return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"LLM API returned invalid JSON: {exc.msg}") from None
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"LLM API HTTP {exc.code} from {urllib.parse.urlparse(req.full_url).hostname}") from None
     except urllib.error.URLError as exc:
@@ -171,7 +175,9 @@ def resolve_llm_route(
                 requested = candidate
                 break
         else:
-            requested = "lmstudio" if (e.get("LMSTUDIO_BASE_URL") and not e.get("OLLAMA_MODEL")) else "ollama"
+            has_lmstudio = bool((e.get("LMSTUDIO_BASE_URL") or "").strip() or (e.get("LMSTUDIO_MODEL") or "").strip())
+            has_ollama = bool((e.get("OLLAMA_BASE_URL") or "").strip() or (e.get("OLLAMA_MODEL") or "").strip())
+            requested = "lmstudio" if (has_lmstudio and not has_ollama) else "ollama"
 
     if requested not in PROVIDER_DEFAULTS:
         raise ValueError(f"Unsupported LLM provider {requested!r}; supported={sorted(PROVIDER_DEFAULTS)}")
@@ -247,8 +253,11 @@ def complete_prompt(
         }
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         resp = tx(req)
-        choices = resp.get("choices") or [{}]
-        text = str(((choices[0].get("message") or {}).get("content")) or "")
+        choices = resp.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            raise RuntimeError(f"{provider} returned empty completion choices")
+        first = choices[0]
+        text = str(((first.get("message") or {}).get("content")) or "")
         return {"provider": provider, "model": model, "model_tier": model_tier, "content": text}
 
     if protocol == "anthropic_messages":
@@ -268,7 +277,9 @@ def complete_prompt(
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         resp = tx(req)
         blocks = resp.get("content") or []
-        text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
+        text = "\n".join(str(b.get("text", "")) for b in blocks if isinstance(b, dict) and b.get("type") == "text")
+        if not blocks or not text:
+            raise RuntimeError(f"{provider} returned empty message content")
         return {"provider": provider, "model": model, "model_tier": model_tier, "content": text}
 
     if protocol == "gemini_generate":
@@ -285,9 +296,12 @@ def complete_prompt(
         }
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         resp = tx(req)
-        cands = resp.get("candidates") or [{}]
-        parts = ((cands[0].get("content") or {}).get("parts")) or []
-        text = "\n".join(str(p.get("text", "")) for p in parts if "text" in p)
+        cands = resp.get("candidates") or []
+        if not cands or not isinstance(cands[0], dict):
+            raise RuntimeError(f"{provider} returned empty candidates")
+        first_cand = cands[0]
+        parts = ((first_cand.get("content") or {}).get("parts")) or []
+        text = "\n".join(str(p.get("text", "")) for p in parts if isinstance(p, dict) and "text" in p)
         return {"provider": provider, "model": model, "model_tier": model_tier, "content": text}
 
     raise ValueError(f"Unhandled protocol {protocol!r}")

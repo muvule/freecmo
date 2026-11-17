@@ -21,8 +21,10 @@ if str(REPO_ROOT) not in sys.path:
 from calculators.cac_ltv import compute_cac_ltv
 from connectors.ad_platform_sync import detect_configured_platforms, sync_all_platforms
 from connectors.approval_gate import check_strategy_lock
-from connectors.context_offloader import build_ordered_context
+from connectors.context_offloader import build_ordered_context, offload_if_oversized
+from connectors.env_loader import load_dotenv_file
 from connectors.llm_router import MODEL_TIERS, complete_prompt, resolve_llm_route
+from connectors.sanitizer import sanitize_untrusted_text
 from scripts.next_action import PRODUCTION_SKILLS, generate_next_actions
 from scripts.validate_skills import split_frontmatter
 
@@ -30,21 +32,8 @@ from scripts.validate_skills import split_frontmatter
 BOOTSTRAP_SAFE_SKILLS = {"cmo-init", "unit-economics-floors", "tracking-health-audit"}
 
 
-def load_dotenv_file(dotenv_path: pathlib.Path) -> dict[str, str]:
-    """Load simple KEY=VALUE lines from .env without overriding existing process env vars."""
-    merged = dict(os.environ)
-    if not dotenv_path.exists():
-        return merged
-    for raw in dotenv_path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        key = k.strip()
-        val = v.strip().strip('"').strip("'")
-        if key and key not in merged:
-            merged[key] = val
-    return merged
+def _clean_single_line(raw: str) -> str:
+    return " ".join(str(raw or "").replace("\r", " ").replace("\n", " ").split())
 
 
 def _find_skill_path(skill_name: str, repo_root: pathlib.Path) -> pathlib.Path:
@@ -76,45 +65,53 @@ def cmd_init(
     floors = econ
     bt_path = repo_root / ".agents" / "brand-truth.md"
     bt_path.parent.mkdir(parents=True, exist_ok=True)
-    content = f"""---
-status: draft_pending_review
-brand_name: "{brand_name}"
-website_url: "{website_url}"
-monthly_budget_usd: {monthly_budget_usd}
----
-
-# Brand Truth — {brand_name}
-
-> Review the unit economics and positioning below, then change `status: draft_pending_review` to `status: locked` to unlock production skills.
-
-## 1. Company & Offer Summary
-- **Website:** {website_url}
-- **Description:** {description}
-
-## 2. Deterministic Unit Economics Floors (`calculators/cac_ltv.py`)
-- **AOV:** ${aov_usd:.2f}
-- **Gross Margin:** {gross_margin_pct:.1f}%
-- **Gross Profit per Order:** ${floors.get('gross_profit_per_order_usd', 'unknown')}
-- **Break-Even ROAS:** {floors.get('break_even_roas', 'unknown')}x
-- **Allowable CAC:** ${floors.get('allowable_cac_usd', 'unknown')}
-
-## 3. Active Strategic Bets (With Disproof Conditions)
-- Bet 1: Validate primary buyer pain angle within allowable CAC (`disproof_condition: conversions == 0 after 2.0x allowable_cac_usd spend`).
-
-## 4. Killed Assumptions
-| Bet ID | Disproven Angle / Hypothesis | Quantitative Evidence | Date Killed | Resurrection Condition |
-|---|---|---|---|---|
-| — | None recorded yet | — | — | Requires explicit market/product shift approved by Composer |
-
-## 5. Validated Learnings
-- Initialized via `cmo_runner.py init`.
-"""
+    safe_brand = _clean_single_line(brand_name)
+    safe_url = _clean_single_line(website_url)
+    safe_desc = _clean_single_line(description)
+    budget_num = float(monthly_budget_usd)
+    content = (
+        "---\n"
+        "status: draft_pending_review\n"
+        f"brand_name: {json.dumps(safe_brand)}\n"
+        f"website_url: {json.dumps(safe_url)}\n"
+        f"monthly_budget_usd: {budget_num}\n"
+        "---\n\n"
+        f"# Brand Truth — {safe_brand}\n\n"
+        "> Review the unit economics and positioning below, then change `status: draft_pending_review` to `status: locked` to unlock production skills.\n\n"
+        "## 1. Company & Offer Summary\n"
+        f"- **Website:** {safe_url}\n"
+        f"- **Description:** {safe_desc}\n\n"
+        "## 2. Deterministic Unit Economics Floors (`calculators/cac_ltv.py`)\n"
+        f"- **AOV:** ${aov_usd:.2f}\n"
+        f"- **Gross Margin:** {gross_margin_pct:.1f}%\n"
+        f"- **Gross Profit per Order:** ${floors.get('gross_profit_per_order_usd', 'unknown')}\n"
+        f"- **Break-Even ROAS:** {floors.get('break_even_roas', 'unknown')}x\n"
+        f"- **Allowable CAC:** ${floors.get('allowable_cac_usd', 'unknown')}\n\n"
+        "## 3. Active Strategic Bets (With Disproof Conditions)\n"
+        "- Bet 1: Validate primary buyer pain angle within allowable CAC (`disproof_condition: conversions == 0 after 2.0x allowable_cac_usd spend`).\n\n"
+        "## 4. Killed Assumptions\n"
+        "| Bet ID | Disproven Angle / Hypothesis | Quantitative Evidence | Date Killed | Resurrection Condition |\n"
+        "|---|---|---|---|---|\n"
+        "| — | None recorded yet | — | — | Requires explicit market/product shift approved by Composer |\n\n"
+        "## 5. Validated Learnings\n"
+        "- Initialized via `cmo_runner.py init`.\n"
+    )
     bt_path.write_text(content, encoding="utf-8")
     return {
         "brand_truth_path": str(bt_path),
         "strategy_lock_status": "draft_pending_review",
         "unit_economics": econ,
     }
+
+
+def _sanitize_data_slice(payload: Any) -> Any:
+    if isinstance(payload, str):
+        return sanitize_untrusted_text(payload)
+    if isinstance(payload, list):
+        return [_sanitize_data_slice(x) for x in payload]
+    if isinstance(payload, dict):
+        return {str(k): _sanitize_data_slice(v) for k, v in payload.items()}
+    return payload
 
 
 def cmd_run_skill(
@@ -125,6 +122,7 @@ def cmd_run_skill(
     provider: str | None,
     dry_run: bool,
     env: dict[str, str],
+    data_slice: Any = None,
 ) -> dict[str, Any]:
     lock_status = check_strategy_lock(repo_root / ".agents" / "brand-truth.md")
     if skill_name not in BOOTSTRAP_SAFE_SKILLS and (skill_name in PRODUCTION_SKILLS or lock_status != "locked"):
@@ -147,23 +145,48 @@ def cmd_run_skill(
     vdna_json = (repo_root / ".agents" / "visual-dna.json").read_text(encoding="utf-8")
     instincts_md = (repo_root / ".agents" / "instincts.md").read_text(encoding="utf-8")
 
+    safe_brief = sanitize_untrusted_text(brief_text)
+    volatile: dict[str, Any] = {"skill": skill_name, "brief": safe_brief}
+    offload_info: dict[str, Any] | None = None
+    if data_slice is not None:
+        safe_slice = _sanitize_data_slice(data_slice)
+        offload_info = offload_if_oversized(
+            subtask_id=f"{skill_name}-slice",
+            payload=safe_slice,
+            offload_dir=repo_root / "data" / "offload",
+        )
+        volatile["data_slice"] = (
+            {
+                "offloaded": True,
+                "offload_pointer": offload_info["offload_pointer"],
+                "summary": offload_info["summary"],
+            }
+            if offload_info["offloaded"]
+            else offload_info["payload"]
+        )
+
     ordered = build_ordered_context(
         static_system_rules=agents_rules,
         tool_or_skill_schemas={skill_name: {"frontmatter": fm, "instructions": skill_raw}},
         brand_truth_md=bt_md,
         visual_dna_json=vdna_json,
         instincts_md=instincts_md,
-        volatile_slice={"skill": skill_name, "brief": brief_text},
+        volatile_slice=volatile,
     )
     route = resolve_llm_route(model_tier=model_tier, provider_override=provider, env=env)
     if dry_run:
-        return {
+        res: dict[str, Any] = {
             "dry_run": True,
             "skill": skill_name,
             "route": route,
             "prompt_chars": len(ordered["full_prompt"]),
             "kv_prefix_chars": len(ordered["prefix_segments"]),
         }
+        if offload_info is not None:
+            res["data_slice_offloaded"] = offload_info["offloaded"]
+            if offload_info["offloaded"]:
+                res["offload_pointer"] = offload_info["offload_pointer"]
+        return res
 
     completion = complete_prompt(
         system_prompt=ordered["prefix_segments"],
@@ -172,12 +195,24 @@ def cmd_run_skill(
         provider_override=provider,
         env=env,
     )
-    return {
+    res = {
         "dry_run": False,
         "skill": skill_name,
         "route": route,
         "output": completion["content"],
     }
+    if offload_info is not None:
+        res["data_slice_offloaded"] = offload_info["offloaded"]
+    return res
+
+
+def _load_cli_text_or_json(raw_arg: str) -> Any:
+    p_candidate = pathlib.Path(raw_arg)
+    raw = p_candidate.read_text(encoding="utf-8") if p_candidate.exists() and p_candidate.is_file() else raw_arg
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -202,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     p_run = sub.add_parser("run-skill", help="Execute a specialist FreeCMO skill via local or cloud LLM")
     p_run.add_argument("--skill", required=True, help="Skill folder name (e.g., editorial-blog-linkedin-writer)")
     p_run.add_argument("--brief", required=True, help="Subtask brief text or path to a file")
+    p_run.add_argument("--data-slice", help="Optional JSON string or file path for telemetry/research data slice (auto-offloaded >1500 tokens)")
     p_run.add_argument("--tier", choices=MODEL_TIERS, default="balanced_worker")
     p_run.add_argument("--dry-run", action="store_true", help="Verify lock, KV-cache prompt assembly, and model route without API call")
 
@@ -224,11 +260,16 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "sync-brief":
         sync_res = sync_all_platforms(repo_root=root, env=env, demo_fixture=args.demo_fixture)
         brief = generate_next_actions(sync_res["orchestrator_state"], repo_root=root)
-        out = {"synced_platforms": sync_res["synced_platforms"], "composers_brief": brief}
+        out = {
+            "synced_platforms": sync_res["synced_platforms"],
+            "sync_errors": sync_res["sync_errors"],
+            "composers_brief": brief,
+        }
     elif args.command == "run-skill":
         brief_arg = args.brief
         p_candidate = pathlib.Path(brief_arg)
         brief_txt = p_candidate.read_text(encoding="utf-8") if p_candidate.exists() and p_candidate.is_file() else brief_arg
+        parsed_slice = _load_cli_text_or_json(args.data_slice) if args.data_slice else None
         out = cmd_run_skill(
             repo_root=root,
             skill_name=args.skill,
@@ -237,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             dry_run=args.dry_run,
             env=env,
+            data_slice=parsed_slice,
         )
     else:
         raise ValueError(f"Unknown command {args.command}")

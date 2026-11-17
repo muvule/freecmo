@@ -22,6 +22,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+from scripts.build_packages import RUNTIME_PROFILES, build_artifacts
+
+
 SUPPORTED_HOSTS = (
     "all",
     "antigravity",
@@ -43,6 +46,7 @@ def _build_mcp_server_entry(repo_root: pathlib.Path) -> dict[str, Any]:
             "freecmo-core": {
                 "command": "python3",
                 "args": [str((repo_root / "scripts" / "mcp_server.py").resolve())],
+                "env": {},
             }
         }
     }
@@ -116,10 +120,16 @@ def generate_host_configs(
     repo_root: pathlib.Path = REPO_ROOT,
     output_dir: pathlib.Path | None = None,
     write_workspace_cursor: bool = False,
+    profile: str | None = None,
 ) -> dict[str, Any]:
     """Generate host configuration files and return manifest + quickstart instructions."""
     if host not in SUPPORTED_HOSTS:
         raise ValueError(f"Unsupported host {host!r}; choose from {SUPPORTED_HOSTS}")
+    if profile is not None and profile not in RUNTIME_PROFILES:
+        raise ValueError(f"Unsupported profile {profile!r}; choose from {sorted(RUNTIME_PROFILES)}")
+
+    if profile is not None:
+        build_artifacts(repo_root=repo_root, check_only=False, profile=profile)
 
     out_dir = (output_dir or (repo_root / "dist" / "hosts")).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -150,6 +160,8 @@ def generate_host_configs(
     if "chatgpt" in targets:
         gpt_inst = out_dir / "chatgpt_custom_gpt_instructions.md"
         inst_text = _build_chatgpt_instructions()
+        if len(inst_text) > 8000:
+            raise ValueError(f"ChatGPT Custom GPT instructions exceed 8,000-character limit ({len(inst_text)})")
         gpt_inst.write_text(inst_text, encoding="utf-8")
         written.append(str(gpt_inst))
 
@@ -198,6 +210,7 @@ def generate_host_configs(
 
     return {
         "requested_host": host,
+        "active_profile": profile or "unchanged",
         "output_dir": str(out_dir),
         "generated_files": written,
         "docs_guide": str(repo_root / "docs" / "HARNESS_SETUP.md"),
@@ -207,6 +220,7 @@ def generate_host_configs(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate FreeCMO harness configuration for any AI host or local LLM.")
     parser.add_argument("--host", choices=SUPPORTED_HOSTS, default="all", help="Target AI host or provider")
+    parser.add_argument("--profile", choices=sorted(RUNTIME_PROFILES.keys()), help="Optional <=16 runtime skill pack profile to activate")
     parser.add_argument("--output-dir", help="Output directory for generated host bundles (default: dist/hosts)")
     parser.add_argument("--write-workspace-cursor", action="store_true", help="Also write .cursor/rules/freecmo.mdc")
     args = parser.parse_args(argv)
@@ -217,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=REPO_ROOT,
         output_dir=out_dir,
         write_workspace_cursor=args.write_workspace_cursor,
+        profile=args.profile,
     )
     print(json.dumps(res, indent=2, sort_keys=True))
     return 0

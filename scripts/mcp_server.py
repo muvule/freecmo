@@ -16,6 +16,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from calculators import validate_json_schema
 from calculators.cac_ltv import (
     compute_cac_ltv,
     compute_creator_commission_cap,
@@ -23,6 +24,7 @@ from calculators.cac_ltv import (
 )
 from calculators.mer import compute_blended_mer
 from connectors.ad_platform_sync import sync_all_platforms
+from connectors.env_loader import load_dotenv_file
 from connectors.utm_governance import build_governed_utm_url
 from scripts.next_action import generate_next_actions
 
@@ -105,6 +107,17 @@ MCP_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "freecmo_validate_creative_spec",
+        "description": "Validate a Social (IG/FB/LinkedIn/X), Display (IAB), or Native creative brief against creative_asset_spec.schema.json.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["spec"],
+            "properties": {
+                "spec": {"type": "object"},
+            },
+        },
+    },
+    {
         "name": "freecmo_sync_platforms",
         "description": "Sync Google Ads, Meta/IG/FB, LinkedIn, TikTok, GA4, GSC, Stripe, & Shopify into data/exports/ and emit Weekly Brief.",
         "inputSchema": {
@@ -114,6 +127,8 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 "lookback_days": {"type": "integer", "default": 30},
                 "allowable_cac_usd": {"type": "number", "default": 100.0},
                 "monthly_budget_usd": {"type": "number", "default": 2500.0},
+                "gross_margin_pct": {"type": "number", "default": 65.0},
+                "site_load_sec": {"type": "number", "default": 2.1},
                 "emit_brief": {"type": "boolean", "default": True},
             },
         },
@@ -133,7 +148,13 @@ MCP_TOOLS: list[dict[str, Any]] = [
 
 def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.Path = REPO_ROOT) -> dict[str, Any]:
     """Execute an MCP tool call deterministically and return JSON-serializable output."""
-    args = arguments or {}
+    if arguments is None:
+        args: dict[str, Any] = {}
+    elif not isinstance(arguments, dict):
+        raise ValueError("MCP tool arguments must be a JSON object")
+    else:
+        args = arguments
+
     if name == "freecmo_unit_economics":
         return compute_cac_ltv(**args)
     if name == "freecmo_promo_breakeven":
@@ -144,17 +165,34 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
         return compute_blended_mer(**args)
     if name == "freecmo_utm_builder":
         return build_governed_utm_url(**args)
+    if name == "freecmo_validate_creative_spec":
+        spec = args.get("spec")
+        if not isinstance(spec, dict):
+            raise ValueError("freecmo_validate_creative_spec requires a 'spec' JSON object")
+        schema_dir = repo_root / "schemas"
+        schema = json.loads((schema_dir / "creative_asset_spec.schema.json").read_text(encoding="utf-8"))
+        errors = validate_json_schema(spec, schema, schema_dir)
+        return {
+            "valid": len(errors) == 0,
+            "asset_id": spec.get("asset_id"),
+            "errors": errors,
+        }
     if name == "freecmo_sync_platforms":
         emit_brief = bool(args.get("emit_brief", True))
+        env = load_dotenv_file(repo_root / ".env")
         sync_res = sync_all_platforms(
             repo_root=repo_root,
             lookback_days=int(args.get("lookback_days", 30)),
+            env=env,
             demo_fixture=bool(args.get("demo_fixture", False)),
             allowable_cac_usd=float(args.get("allowable_cac_usd", 100.0)),
             monthly_budget_usd=float(args.get("monthly_budget_usd", 2500.0)),
+            gross_margin_pct=float(args.get("gross_margin_pct", 65.0)),
+            site_load_sec=float(args.get("site_load_sec", 2.1)),
         )
         out: dict[str, Any] = {
             "synced_platforms": sync_res["synced_platforms"],
+            "sync_errors": sync_res["sync_errors"],
             "written_exports": sync_res["written_exports"],
             "unified_customer_records": sync_res["unified_customer_records"],
         }
@@ -164,7 +202,7 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
     if name == "freecmo_weekly_brief":
         sp = args.get("state_path")
         if sp:
-            target = pathlib.Path(sp).resolve()
+            target = pathlib.Path(str(sp)).resolve()
             if not target.is_relative_to(repo_root.resolve()):
                 raise ValueError("state_path must reside inside repository workspace")
         else:

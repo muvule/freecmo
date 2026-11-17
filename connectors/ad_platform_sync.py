@@ -40,12 +40,41 @@ SUPPORTED_PLATFORMS = (
 TransportFn = Callable[[urllib.request.Request], dict[str, Any]]
 
 
+import re
+
+_NUMERIC_ID_RE = re.compile(r"^[0-9]{1,32}$")
+_SAFE_SHOPIFY_DOMAIN_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9-]+)+$")
+
+
+def _validate_numeric_id(raw: str, label: str) -> str:
+    cleaned = (raw or "").strip()
+    if not _NUMERIC_ID_RE.match(cleaned):
+        raise ValueError(f"Invalid {label}: expected digits only, got {raw!r}")
+    return cleaned
+
+
+def _validate_shopify_domain(raw: str) -> str:
+    dom = (raw or "").removeprefix("https://").removeprefix("http://").strip("/").lower()
+    if not dom or "@" in dom or "/" in dom or ":" in dom or not _SAFE_SHOPIFY_DOMAIN_RE.match(dom):
+        raise ValueError(f"Invalid SHOPIFY_STORE_DOMAIN: {raw!r}")
+    return dom
+
+
+def _date_window(lookback_days: int) -> tuple[str, str]:
+    days = max(1, int(lookback_days))
+    until_dt = datetime.now(timezone.utc)
+    since_dt = until_dt - timedelta(days=days)
+    return since_dt.strftime("%Y-%m-%d"), until_dt.strftime("%Y-%m-%d")
+
+
 def _default_transport(req: urllib.request.Request) -> dict[str, Any]:
     validate_endpoint_url(req.full_url)
     try:
         with urllib.request.urlopen(req, timeout=25) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             return json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Platform API returned invalid JSON: {exc.msg}") from None
     except urllib.error.HTTPError as exc:
         # Never echo request headers/tokens in error output
         raise RuntimeError(f"Platform API HTTP {exc.code} on {urllib.parse.urlparse(req.full_url).hostname}") from None
@@ -127,10 +156,16 @@ def _write_normalized_csv(path: pathlib.Path, fieldnames: list[str], rows: list[
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
-            clean_row = {
-                k: neutralize_csv_cell(str(row.get(k, ""))) if isinstance(row.get(k), str) else row.get(k, "")
-                for k in fieldnames
-            }
+            clean_row: dict[str, Any] = {}
+            for k in fieldnames:
+                raw_v = row.get(k, "")
+                if isinstance(raw_v, str):
+                    compact = " ".join(raw_v.replace("\r", " ").replace("\n", " ").split())
+                    if len(compact) > 500:
+                        compact = compact[:497] + "..."
+                    clean_row[k] = neutralize_csv_cell(compact)
+                else:
+                    clean_row[k] = raw_v
             writer.writerow(clean_row)
     return str(path)
 
@@ -144,30 +179,35 @@ def fetch_google_ads(
     tx = transport or _default_transport
     token = _resolve_google_token("GOOGLE_ADS", env, tx)
     dev_token = (env.get("GOOGLE_ADS_DEVELOPER_TOKEN") or "").strip()
-    customer_id = (env.get("GOOGLE_ADS_CUSTOMER_ID") or "").replace("-", "").strip()
-    if not (token and dev_token and customer_id):
-        raise ValueError("Missing GOOGLE_ADS_CUSTOMER_ID, GOOGLE_ADS_DEVELOPER_TOKEN, or OAuth token")
+    customer_id = _validate_numeric_id(
+        (env.get("GOOGLE_ADS_CUSTOMER_ID") or "").replace("-", ""),
+        "GOOGLE_ADS_CUSTOMER_ID",
+    )
+    if not (token and dev_token):
+        raise ValueError("Missing GOOGLE_ADS_DEVELOPER_TOKEN or Google OAuth token")
 
+    since, until = _date_window(lookback_days)
     url = f"https://googleads.googleapis.com/v18/customers/{customer_id}/googleAds:searchStream"
     gaql = (
         "SELECT campaign.id, campaign.name, metrics.cost_micros, metrics.impressions, "
         "metrics.clicks, metrics.conversions, metrics.conversions_value, "
         "search_term_view.search_term "
-        f"FROM search_term_view WHERE segments.date DURING LAST_{int(lookback_days)}_DAYS"
+        f"FROM search_term_view WHERE segments.date BETWEEN '{since}' AND '{until}'"
     )
     headers = {
         "Authorization": f"Bearer {token}",
         "developer-token": dev_token,
         "Content-Type": "application/json",
     }
-    login_cid = (env.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID") or "").replace("-", "").strip()
-    if login_cid:
-        headers["login-customer-id"] = login_cid
+    raw_login = (env.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID") or "").replace("-", "").strip()
+    if raw_login:
+        headers["login-customer-id"] = _validate_numeric_id(raw_login, "GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 
     req = urllib.request.Request(url, data=json.dumps({"query": gaql}).encode("utf-8"), headers=headers, method="POST")
     payload = tx(req)
     batches = payload if isinstance(payload, list) else payload.get("batches", [payload])
 
+    days = max(1, int(lookback_days))
     rows: list[dict[str, Any]] = []
     campaigns_map: dict[str, dict[str, Any]] = {}
     for batch in batches:
@@ -205,8 +245,8 @@ def fetch_google_ads(
                     "spend": 0.0,
                     "revenue": 0.0,
                     "conversions": 0.0,
-                    "days": lookback_days,
-                    "days_running": lookback_days,
+                    "days": days,
+                    "days_running": days,
                 },
             )
             agg["spend"] = round(agg["spend"] + spend, 2)
@@ -232,67 +272,76 @@ def fetch_meta_ads_and_social(
     if not token:
         raise ValueError("Missing META_ACCESS_TOKEN")
 
-    ad_account_id = (env.get("META_AD_ACCOUNT_ID") or "").removeprefix("act_").strip()
-    ig_id = (env.get("IG_BUSINESS_ACCOUNT_ID") or "").strip()
-    fb_page_id = (env.get("FB_PAGE_ID") or "").strip()
+    raw_act = (env.get("META_AD_ACCOUNT_ID") or "").removeprefix("act_").strip()
+    ad_account_id = _validate_numeric_id(raw_act, "META_AD_ACCOUNT_ID") if raw_act else ""
+    raw_ig = (env.get("IG_BUSINESS_ACCOUNT_ID") or "").strip()
+    ig_id = _validate_numeric_id(raw_ig, "IG_BUSINESS_ACCOUNT_ID") if raw_ig else ""
+    raw_fb = (env.get("FB_PAGE_ID") or "").strip()
+    fb_page_id = _validate_numeric_id(raw_fb, "FB_PAGE_ID") if raw_fb else ""
 
+    days = max(1, int(lookback_days))
+    since, until = _date_window(days)
     ad_rows: list[dict[str, Any]] = []
     active_campaigns: list[dict[str, Any]] = []
 
     if ad_account_id:
-        since = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-        until = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         qs = urllib.parse.urlencode(
             {
                 "fields": "campaign_id,campaign_name,spend,impressions,clicks,actions,action_values,publisher_platform",
                 "time_range": json.dumps({"since": since, "until": until}),
                 "level": "campaign",
+                "limit": "100",
             }
         )
-        url = f"https://graph.facebook.com/v21.0/act_{ad_account_id}/insights?{qs}"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
-        resp = tx(req)
-        for item in resp.get("data", []):
-            spend = round(float(item.get("spend", 0.0)), 2)
-            impr = int(item.get("impressions", 0))
-            clicks = int(item.get("clicks", 0))
-            convs = 0.0
-            for act in item.get("actions", []) or []:
-                if act.get("action_type") in ("purchase", "lead", "offsite_conversion.fb_pixel_purchase"):
-                    convs += float(act.get("value", 0.0))
-            rev = 0.0
-            for av in item.get("action_values", []) or []:
-                if av.get("action_type") in ("purchase", "offsite_conversion.fb_pixel_purchase"):
-                    rev += float(av.get("value", 0.0))
-            cid = f"meta-{item.get('campaign_id', 'unknown')}"
-            cname = str(item.get("campaign_name") or cid)
-            pub = str(item.get("publisher_platform") or "facebook_instagram")
-            ad_rows.append(
-                {
-                    "platform": f"meta_{pub}",
-                    "campaign_id": cid,
-                    "campaign_name": cname,
-                    "publisher_platform": pub,
-                    "spend_usd": spend,
-                    "impressions": impr,
-                    "clicks": clicks,
-                    "conversions": round(convs, 2),
-                    "revenue_usd": round(rev, 2),
-                }
-            )
-            active_campaigns.append(
-                {
-                    "campaign_id": cid,
-                    "campaign_name": cname,
-                    "channel": "paid_social",
-                    "spend": spend,
-                    "revenue": round(rev, 2),
-                    "conversions": round(convs, 2),
-                    "roas": round(rev / spend, 2) if spend > 0 else 0.0,
-                    "days": lookback_days,
-                    "days_running": lookback_days,
-                }
-            )
+        next_url: str | None = f"https://graph.facebook.com/v21.0/act_{ad_account_id}/insights?{qs}"
+        pages = 0
+        while next_url and pages < 5:
+            pages += 1
+            req = urllib.request.Request(next_url, headers={"Authorization": f"Bearer {token}"}, method="GET")
+            resp = tx(req)
+            for item in resp.get("data", []):
+                spend = round(float(item.get("spend", 0.0)), 2)
+                impr = int(item.get("impressions", 0))
+                clicks = int(item.get("clicks", 0))
+                convs = 0.0
+                for act in item.get("actions", []) or []:
+                    if act.get("action_type") in ("purchase", "lead", "offsite_conversion.fb_pixel_purchase"):
+                        convs += float(act.get("value", 0.0))
+                rev = 0.0
+                for av in item.get("action_values", []) or []:
+                    if av.get("action_type") in ("purchase", "offsite_conversion.fb_pixel_purchase"):
+                        rev += float(av.get("value", 0.0))
+                cid = f"meta-{item.get('campaign_id', 'unknown')}"
+                cname = str(item.get("campaign_name") or cid)
+                pub = str(item.get("publisher_platform") or "facebook_instagram")
+                ad_rows.append(
+                    {
+                        "platform": f"meta_{pub}",
+                        "campaign_id": cid,
+                        "campaign_name": cname,
+                        "publisher_platform": pub,
+                        "spend_usd": spend,
+                        "impressions": impr,
+                        "clicks": clicks,
+                        "conversions": round(convs, 2),
+                        "revenue_usd": round(rev, 2),
+                    }
+                )
+                active_campaigns.append(
+                    {
+                        "campaign_id": cid,
+                        "campaign_name": cname,
+                        "channel": "paid_social",
+                        "spend": spend,
+                        "revenue": round(rev, 2),
+                        "conversions": round(convs, 2),
+                        "roas": round(rev / spend, 2) if spend > 0 else 0.0,
+                        "days": days,
+                        "days_running": days,
+                    }
+                )
+            next_cand = ((resp.get("paging") or {}).get("next"))
+            next_url = str(next_cand) if isinstance(next_cand, str) and next_cand.startswith("https://graph.facebook.com/") else None
 
     organic_posts: list[dict[str, Any]] = []
     raw_social: list[dict[str, Any]] = []
@@ -301,7 +350,7 @@ def fetch_meta_ads_and_social(
         ig_url = (
             f"https://graph.facebook.com/v21.0/{ig_id}/media?"
             + urllib.parse.urlencode(
-                {"fields": "id,caption,media_type,like_count,comments_count,saved,plays,reach,permalink"}
+                {"fields": "id,caption,media_type,like_count,comments_count,saved,plays,reach,permalink", "limit": "50"}
             )
         )
         ig_resp = tx(urllib.request.Request(ig_url, headers={"Authorization": f"Bearer {token}"}, method="GET"))
@@ -323,7 +372,7 @@ def fetch_meta_ads_and_social(
     if fb_page_id:
         fb_url = (
             f"https://graph.facebook.com/v21.0/{fb_page_id}/posts?"
-            + urllib.parse.urlencode({"fields": "id,message,shares,permalink_url"})
+            + urllib.parse.urlencode({"fields": "id,message,shares,permalink_url", "limit": "50"})
         )
         fb_resp = tx(urllib.request.Request(fb_url, headers={"Authorization": f"Bearer {token}"}, method="GET"))
         for p in fb_resp.get("data", []):
@@ -366,20 +415,28 @@ def fetch_linkedin_ads(
     """Fetch LinkedIn Campaign Manager ad analytics."""
     tx = transport or _default_transport
     token = (env.get("LINKEDIN_ACCESS_TOKEN") or "").strip()
-    account_id = (env.get("LINKEDIN_AD_ACCOUNT_ID") or "").strip()
-    if not (token and account_id):
-        raise ValueError("Missing LINKEDIN_ACCESS_TOKEN or LINKEDIN_AD_ACCOUNT_ID")
+    account_id = _validate_numeric_id(env.get("LINKEDIN_AD_ACCOUNT_ID") or "", "LINKEDIN_AD_ACCOUNT_ID")
+    if not token:
+        raise ValueError("Missing LINKEDIN_ACCESS_TOKEN")
 
-    url = (
-        "https://api.linkedin.com/rest/adAnalytics?"
-        + urllib.parse.urlencode(
-            {
-                "q": "analytics",
-                "pivot": "CAMPAIGN",
-                "accounts": f"urn:li:sponsoredAccount:{account_id}",
-            }
-        )
+    days = max(1, int(lookback_days))
+    until_dt = datetime.now(timezone.utc)
+    since_dt = until_dt - timedelta(days=days)
+    date_range_param = (
+        f"(start:(year:{since_dt.year},month:{since_dt.month},day:{since_dt.day}),"
+        f"end:(year:{until_dt.year},month:{until_dt.month},day:{until_dt.day}))"
     )
+    qs = urllib.parse.urlencode(
+        {
+            "q": "analytics",
+            "pivot": "CAMPAIGN",
+            "timeGranularity": "ALL",
+            "dateRange": date_range_param,
+            "accounts": f"List(urn:li:sponsoredAccount:{account_id})",
+            "fields": "pivotValues,costInUsd,impressions,clicks,externalWebsiteConversions,conversionValueInLocalCurrency",
+        }
+    )
+    url = f"https://api.linkedin.com/rest/adAnalytics?{qs}"
     req = urllib.request.Request(
         url,
         headers={
@@ -393,7 +450,9 @@ def fetch_linkedin_ads(
     rows: list[dict[str, Any]] = []
     active_campaigns: list[dict[str, Any]] = []
     for idx, el in enumerate(resp.get("elements", []), start=1):
-        cid = f"li-{el.get('pivotValue', idx)}"
+        pivots = el.get("pivotValues") or []
+        raw_pivot = pivots[0] if pivots else el.get("pivotValue", idx)
+        cid = f"li-{str(raw_pivot).split(':')[-1]}"
         spend = round(float(el.get("costInUsd", 0.0)), 2)
         impr = int(el.get("impressions", 0))
         clicks = int(el.get("clicks", 0))
@@ -420,8 +479,8 @@ def fetch_linkedin_ads(
                 "revenue": rev,
                 "conversions": convs,
                 "roas": round(rev / spend, 2) if spend > 0 else 0.0,
-                "days": lookback_days,
-                "days_running": lookback_days,
+                "days": days,
+                "days_running": days,
             }
         )
     return {"rows": rows, "active_campaigns": active_campaigns}
@@ -435,12 +494,23 @@ def fetch_tiktok_ads(
     """Fetch TikTok Ads integrated campaign report."""
     tx = transport or _default_transport
     token = (env.get("TIKTOK_ACCESS_TOKEN") or "").strip()
-    adv_id = (env.get("TIKTOK_ADVERTISER_ID") or "").strip()
-    if not (token and adv_id):
-        raise ValueError("Missing TIKTOK_ACCESS_TOKEN or TIKTOK_ADVERTISER_ID")
+    adv_id = _validate_numeric_id(env.get("TIKTOK_ADVERTISER_ID") or "", "TIKTOK_ADVERTISER_ID")
+    if not token:
+        raise ValueError("Missing TIKTOK_ACCESS_TOKEN")
 
+    days = max(1, int(lookback_days))
+    since, until = _date_window(days)
     url = "https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/?" + urllib.parse.urlencode(
-        {"advertiser_id": adv_id, "report_type": "BASIC", "data_level": "AUCTION_CAMPAIGN"}
+        {
+            "advertiser_id": adv_id,
+            "report_type": "BASIC",
+            "data_level": "AUCTION_CAMPAIGN",
+            "dimensions": json.dumps(["campaign_id"]),
+            "metrics": json.dumps(["campaign_name", "spend", "impressions", "clicks", "conversion", "total_complete_payment"]),
+            "start_date": since,
+            "end_date": until,
+            "page_size": "100",
+        }
     )
     req = urllib.request.Request(url, headers={"Access-Token": token}, method="GET")
     resp = tx(req)
@@ -454,7 +524,7 @@ def fetch_tiktok_ads(
         impr = int(met.get("impressions", 0))
         clicks = int(met.get("clicks", 0))
         convs = round(float(met.get("conversion", 0.0)), 2)
-        rev = round(float(met.get("total_complete_payment_rate", 0.0)), 2)
+        rev = round(float(met.get("total_complete_payment", met.get("complete_payment_value", 0.0))), 2)
         rows.append(
             {
                 "platform": "tiktok_ads",
@@ -476,8 +546,8 @@ def fetch_tiktok_ads(
                 "revenue": rev,
                 "conversions": convs,
                 "roas": round(rev / spend, 2) if spend > 0 else 0.0,
-                "days": lookback_days,
-                "days_running": lookback_days,
+                "days": days,
+                "days_running": days,
             }
         )
     return {"rows": rows, "active_campaigns": active_campaigns}
@@ -491,13 +561,14 @@ def fetch_ga4(
     """Fetch GA4 channel acquisition & conversion health via Google Analytics Data API."""
     tx = transport or _default_transport
     token = _resolve_google_token("GA4", env, tx)
-    prop_id = (env.get("GA4_PROPERTY_ID") or "").removeprefix("properties/").strip()
-    if not (token and prop_id):
-        raise ValueError("Missing GA4_PROPERTY_ID or OAuth token")
+    prop_id = _validate_numeric_id((env.get("GA4_PROPERTY_ID") or "").removeprefix("properties/"), "GA4_PROPERTY_ID")
+    if not token:
+        raise ValueError("Missing Google OAuth token for GA4")
 
+    days = max(1, int(lookback_days))
     url = f"https://analyticsdata.googleapis.com/v1beta/properties/{prop_id}:runReport"
     body = {
-        "dateRanges": [{"startDate": f"{int(lookback_days)}daysAgo", "endDate": "today"}],
+        "dateRanges": [{"startDate": f"{days}daysAgo", "endDate": "today"}],
         "dimensions": [{"name": "sessionDefaultChannelGroup"}],
         "metrics": [{"name": "sessions"}, {"name": "conversions"}, {"name": "totalRevenue"}],
     }
@@ -547,8 +618,7 @@ def fetch_gsc(
 
     encoded_site = urllib.parse.quote(site_url, safe="")
     url = f"https://www.googleapis.com/webmasters/v3/sites/{encoded_site}/searchAnalytics/query"
-    start_dt = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-    end_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_dt, end_dt = _date_window(lookback_days)
     body = {"startDate": start_dt, "endDate": end_dt, "dimensions": ["query"], "rowLimit": 250}
     req = urllib.request.Request(
         url,
@@ -575,43 +645,56 @@ def fetch_gsc(
 def fetch_stripe_revenue(
     env: dict[str, str],
     transport: TransportFn | None = None,
+    max_pages: int = 5,
 ) -> dict[str, Any]:
-    """Fetch succeeded charges from Stripe API with immediate SHA-256 PII anonymization."""
+    """Fetch succeeded charges from Stripe API with bounded pagination and immediate SHA-256 PII anonymization."""
     tx = transport or _default_transport
     key = (env.get("STRIPE_RESTRICTED_KEY") or "").strip()
     if not key:
         raise ValueError("Missing STRIPE_RESTRICTED_KEY")
 
-    url = "https://api.stripe.com/v1/charges?limit=100"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"}, method="GET")
-    resp = tx(req)
-
     by_customer: dict[str, dict[str, Any]] = {}
-    for ch in resp.get("data", []):
-        if not ch.get("paid") or ch.get("refunded"):
-            continue
-        raw_id = str(
-            (ch.get("billing_details") or {}).get("email")
-            or ch.get("customer")
-            or ch.get("id")
-        )
-        anon_id = anonymize_customer_key(raw_id)
-        amt_usd = round(float(ch.get("amount", 0)) / 100.0, 2)
-        meta = ch.get("metadata") or {}
-        utm = str(meta.get("utm_source") or "stripe_direct")
-        seg = str(meta.get("crm_segment") or "active_customer")
-        rec = by_customer.setdefault(
-            anon_id,
-            {
-                "anon_customer_id": anon_id,
-                "first_touch_utm": utm,
-                "crm_segment": seg,
-                "orders_count": 0,
-                "ltv_usd": 0.0,
-            },
-        )
-        rec["orders_count"] += 1
-        rec["ltv_usd"] = round(rec["ltv_usd"] + amt_usd, 2)
+    starting_after: str | None = None
+    for _ in range(max_pages):
+        params: dict[str, str] = {"limit": "100"}
+        if starting_after:
+            params["starting_after"] = starting_after
+        url = "https://api.stripe.com/v1/charges?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"}, method="GET")
+        resp = tx(req)
+        data = resp.get("data", [])
+        if not data:
+            break
+        for ch in data:
+            if not ch.get("paid") or ch.get("refunded"):
+                continue
+            raw_id = str(
+                (ch.get("billing_details") or {}).get("email")
+                or ch.get("customer")
+                or ch.get("id")
+            )
+            anon_id = anonymize_customer_key(raw_id)
+            amt_usd = round(float(ch.get("amount", 0)) / 100.0, 2)
+            meta = ch.get("metadata") or {}
+            utm = str(meta.get("utm_source") or "stripe_direct")
+            seg = str(meta.get("crm_segment") or "active_customer")
+            rec = by_customer.setdefault(
+                anon_id,
+                {
+                    "anon_customer_id": anon_id,
+                    "first_touch_utm": utm,
+                    "crm_segment": seg,
+                    "orders_count": 0,
+                    "ltv_usd": 0.0,
+                },
+            )
+            rec["orders_count"] += 1
+            rec["ltv_usd"] = round(rec["ltv_usd"] + amt_usd, 2)
+        if not resp.get("has_more"):
+            break
+        starting_after = str(data[-1].get("id") or "")
+        if not starting_after:
+            break
 
     rows = list(by_customer.values())
     for r in rows:
@@ -623,41 +706,54 @@ def fetch_stripe_revenue(
 def fetch_shopify_orders(
     env: dict[str, str],
     transport: TransportFn | None = None,
+    max_pages: int = 5,
 ) -> dict[str, Any]:
     """Fetch Shopify orders with immediate SHA-256 PII anonymization and UTM extraction."""
     tx = transport or _default_transport
-    domain = (env.get("SHOPIFY_STORE_DOMAIN") or "").removeprefix("https://").removeprefix("http://").strip("/")
+    domain = _validate_shopify_domain(env.get("SHOPIFY_STORE_DOMAIN") or "")
     token = (env.get("SHOPIFY_ADMIN_TOKEN") or "").strip()
-    if not (domain and token):
-        raise ValueError("Missing SHOPIFY_STORE_DOMAIN or SHOPIFY_ADMIN_TOKEN")
-
-    url = f"https://{domain}/admin/api/2024-10/orders.json?status=any&limit=100"
-    req = urllib.request.Request(url, headers={"X-Shopify-Access-Token": token}, method="GET")
-    resp = tx(req)
+    if not token:
+        raise ValueError("Missing SHOPIFY_ADMIN_TOKEN")
 
     by_customer: dict[str, dict[str, Any]] = {}
-    for order in resp.get("orders", []):
-        cust = order.get("customer") or {}
-        raw_id = str(order.get("email") or cust.get("email") or cust.get("id") or order.get("id"))
-        anon_id = anonymize_customer_key(raw_id)
-        price = round(float(order.get("total_price", 0.0) or 0.0), 2)
-        landing = str(order.get("landing_site") or "")
-        qs = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(landing).query))
-        utm = str(qs.get("utm_source") or "shopify_direct")
-        rec = by_customer.setdefault(
-            anon_id,
-            {
-                "anon_customer_id": anon_id,
-                "first_touch_utm": utm,
-                "crm_segment": "first_time_buyer",
-                "orders_count": 0,
-                "ltv_usd": 0.0,
-            },
-        )
-        rec["orders_count"] += 1
-        rec["ltv_usd"] = round(rec["ltv_usd"] + price, 2)
-        if rec["orders_count"] >= 2:
-            rec["crm_segment"] = "repeat_buyer"
+    since_id: str | None = None
+    for _ in range(max_pages):
+        params: dict[str, str] = {"status": "any", "limit": "100"}
+        if since_id:
+            params["since_id"] = since_id
+        url = f"https://{domain}/admin/api/2024-10/orders.json?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"X-Shopify-Access-Token": token}, method="GET")
+        resp = tx(req)
+        orders = resp.get("orders", [])
+        if not orders:
+            break
+        for order in orders:
+            cust = order.get("customer") or {}
+            raw_id = str(order.get("email") or cust.get("email") or cust.get("id") or order.get("id"))
+            anon_id = anonymize_customer_key(raw_id)
+            price = round(float(order.get("total_price", 0.0) or 0.0), 2)
+            landing = str(order.get("landing_site") or "")
+            qs = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(landing).query))
+            utm = str(qs.get("utm_source") or "shopify_direct")
+            rec = by_customer.setdefault(
+                anon_id,
+                {
+                    "anon_customer_id": anon_id,
+                    "first_touch_utm": utm,
+                    "crm_segment": "first_time_buyer",
+                    "orders_count": 0,
+                    "ltv_usd": 0.0,
+                },
+            )
+            rec["orders_count"] += 1
+            rec["ltv_usd"] = round(rec["ltv_usd"] + price, 2)
+            if rec["orders_count"] >= 2:
+                rec["crm_segment"] = "repeat_buyer"
+        if len(orders) < 100:
+            break
+        since_id = str(orders[-1].get("id") or "")
+        if not since_id:
+            break
 
     return {"rows": list(by_customer.values())}
 
@@ -869,6 +965,9 @@ def sync_all_platforms(
     demo_fixture: bool = False,
     allowable_cac_usd: float = 100.0,
     monthly_budget_usd: float = 2500.0,
+    gross_margin_pct: float = 65.0,
+    site_load_sec: float = 2.1,
+    fail_fast: bool = False,
     transport: TransportFn | None = None,
 ) -> dict[str, Any]:
     """Run read-only platform sync, write data/exports/*.csv, unify SQLite cohorts, and assemble state."""
@@ -877,31 +976,40 @@ def sync_all_platforms(
     exports_dir.mkdir(parents=True, exist_ok=True)
     resolver = IdentityResolver(repo_root / "data" / "radar.db")
 
+    sync_errors: dict[str, str] = {}
     if demo_fixture:
         raw_telemetry = build_demo_fixture_telemetry()
         selected = list(raw_telemetry.keys()) if not platforms else [p for p in platforms if p in raw_telemetry]
     else:
         selected = platforms if platforms is not None else detect_configured_platforms(e)
         raw_telemetry = {}
+        succeeded: list[str] = []
         for p in selected:
-            if p == "google_ads":
-                raw_telemetry[p] = fetch_google_ads(e, lookback_days=lookback_days, transport=transport)
-            elif p == "meta_ads":
-                raw_telemetry[p] = fetch_meta_ads_and_social(e, lookback_days=lookback_days, transport=transport)
-            elif p == "linkedin_ads":
-                raw_telemetry[p] = fetch_linkedin_ads(e, lookback_days=lookback_days, transport=transport)
-            elif p == "tiktok_ads":
-                raw_telemetry[p] = fetch_tiktok_ads(e, lookback_days=lookback_days, transport=transport)
-            elif p == "ga4":
-                raw_telemetry[p] = fetch_ga4(e, lookback_days=lookback_days, transport=transport)
-            elif p == "gsc":
-                raw_telemetry[p] = fetch_gsc(e, lookback_days=lookback_days, transport=transport)
-            elif p == "stripe":
-                raw_telemetry[p] = fetch_stripe_revenue(e, transport=transport)
-            elif p == "shopify":
-                raw_telemetry[p] = fetch_shopify_orders(e, transport=transport)
-            else:
+            if p not in SUPPORTED_PLATFORMS:
                 raise ValueError(f"Unsupported platform {p!r}; expected one of {SUPPORTED_PLATFORMS}")
+            try:
+                if p == "google_ads":
+                    raw_telemetry[p] = fetch_google_ads(e, lookback_days=lookback_days, transport=transport)
+                elif p == "meta_ads":
+                    raw_telemetry[p] = fetch_meta_ads_and_social(e, lookback_days=lookback_days, transport=transport)
+                elif p == "linkedin_ads":
+                    raw_telemetry[p] = fetch_linkedin_ads(e, lookback_days=lookback_days, transport=transport)
+                elif p == "tiktok_ads":
+                    raw_telemetry[p] = fetch_tiktok_ads(e, lookback_days=lookback_days, transport=transport)
+                elif p == "ga4":
+                    raw_telemetry[p] = fetch_ga4(e, lookback_days=lookback_days, transport=transport)
+                elif p == "gsc":
+                    raw_telemetry[p] = fetch_gsc(e, lookback_days=lookback_days, transport=transport)
+                elif p == "stripe":
+                    raw_telemetry[p] = fetch_stripe_revenue(e, transport=transport)
+                elif p == "shopify":
+                    raw_telemetry[p] = fetch_shopify_orders(e, transport=transport)
+                succeeded.append(p)
+            except Exception as exc:
+                if fail_fast:
+                    raise
+                sync_errors[p] = str(exc)
+        selected = succeeded
 
     written_files: list[str] = []
     active_campaigns: list[dict[str, Any]] = []
@@ -909,7 +1017,8 @@ def sync_all_platforms(
     gads_rows: list[dict[str, Any]] = []
     gsc_rows: list[dict[str, Any]] = []
     unified_customers = 0
-    tracking_verified = True
+    ga4_seen = False
+    ga4_tracking_ok = False
     monthly_conversions = 0
 
     for p in selected:
@@ -959,7 +1068,8 @@ def sync_all_platforms(
                     rows,
                 )
             )
-            tracking_verified = bool(pdata.get("tracking_verified", True))
+            ga4_seen = True
+            ga4_tracking_ok = bool(pdata.get("tracking_verified", False))
             monthly_conversions = int(pdata.get("monthly_conversions", 0))
         elif p == "gsc":
             written_files.append(
@@ -981,8 +1091,20 @@ def sync_all_platforms(
             unified_customers += resolver.unify_csv_records(rows, source_kind=p)
 
     overlaps, seo_opps = _cross_join_paid_and_gsc(gads_rows, gsc_rows, allowable_cac_usd=allowable_cac_usd)
+    ad_convs = sum(float(c.get("conversions", 0.0)) for c in active_campaigns)
     if monthly_conversions == 0 and active_campaigns:
-        monthly_conversions = int(round(sum(float(c.get("conversions", 0.0)) for c in active_campaigns)))
+        monthly_conversions = int(round(ad_convs))
+
+    # Never falsely assert tracking_verified=True if neither GA4 nor ad conversion events were observed
+    tracking_verified = ga4_tracking_ok if ga4_seen else (ad_convs > 0)
+
+    total_ad_spend = sum(float(c.get("spend", 0.0)) for c in active_campaigns)
+    total_ad_rev = sum(float(c.get("revenue", 0.0)) for c in active_campaigns)
+    gm_ratio = max(0.01, min(1.0, float(gross_margin_pct) / 100.0))
+    if total_ad_spend > 0 and total_ad_rev > 0:
+        payback_months: float | None = round(total_ad_spend / (total_ad_rev * gm_ratio), 2)
+    else:
+        payback_months = None
 
     for camp in active_campaigns:
         camp.setdefault("allowable_cac_usd", allowable_cac_usd)
@@ -1000,7 +1122,7 @@ def sync_all_platforms(
                 "segment_name": seg_name,
                 "motion": "retention" if is_ret else "cold_acquisition",
                 "cost_usd": round(spend_est, 2),
-                "incremental_gross_profit_usd": round(rev_est * 0.65, 2),
+                "incremental_gross_profit_usd": round(rev_est * gm_ratio, 2),
             }
         )
 
@@ -1009,8 +1131,8 @@ def sync_all_platforms(
         "guardrails_path": str(repo_root / ".agents" / "guardrails.yaml"),
         "experiment_ledger_path": str(repo_root / "experiments" / "ledger.jsonl"),
         "tracking_verified": tracking_verified,
-        "site_load_sec": 2.1,
-        "payback_months": 1.8,
+        "site_load_sec": float(site_load_sec),
+        "payback_months": payback_months,
         "max_payback_months": 3.0,
         "monthly_conversions": monthly_conversions,
         "monthly_budget_usd": monthly_budget_usd,
@@ -1029,6 +1151,7 @@ def sync_all_platforms(
 
     return {
         "synced_platforms": selected,
+        "sync_errors": sync_errors,
         "written_exports": written_files,
         "unified_customer_records": unified_customers,
         "state_path": str(state_path),
