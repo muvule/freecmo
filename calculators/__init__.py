@@ -96,6 +96,29 @@ def _strip_yaml_comment(line: str) -> str:
     return line.rstrip()
 
 
+_YAML_ESCAPE_RE = re.compile(r'\\(["\\/bfnrt]|u[0-9a-fA-F]{4})')
+_YAML_SIMPLE_ESCAPES = {
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+}
+
+
+def _decode_yaml_double_quoted(raw: str) -> str:
+    def _sub(match: re.Match[str]) -> str:
+        esc = match.group(1)
+        if esc.startswith("u"):
+            return chr(int(esc[1:], 16))
+        return _YAML_SIMPLE_ESCAPES.get(esc, esc)
+
+    return _YAML_ESCAPE_RE.sub(_sub, raw)
+
+
 def _parse_yaml_scalar(token: str) -> Any:
     s = token.strip()
     if s == "" or s in ("null", "Null", "NULL", "~"):
@@ -108,7 +131,7 @@ def _parse_yaml_scalar(token: str) -> Any:
         s.startswith("'") and s.endswith("'") and len(s) >= 2
     ):
         if s.startswith('"'):
-            return bytes(s[1:-1], "utf-8").decode("unicode_escape")
+            return _decode_yaml_double_quoted(s[1:-1])
         return s[1:-1].replace("''", "'")
     if s == "[]":
         return []

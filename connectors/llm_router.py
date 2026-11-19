@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import json
-import mimetypes
 import os
 import pathlib
 import urllib.error
@@ -18,10 +17,11 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable
 
-from scripts.geo_benchmark import validate_endpoint_url
+from scripts.geo_benchmark import safe_urlopen, validate_endpoint_url
 
 
 MODEL_TIERS = ("fast_decider", "balanced_worker", "deep_orchestrator", "multimodal_creative")
+_SENSITIVE_ATTACHMENT_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".kube", ".docker"}
 
 PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
     "openai": {
@@ -173,17 +173,25 @@ LLMTransportFn = Callable[[urllib.request.Request], dict[str, Any]]
 
 
 def load_attachment_file(file_path: str | pathlib.Path, max_bytes: int = 15 * 1024 * 1024) -> dict[str, str]:
-    """Read an image, PDF, or Office document into a Gemini/multimodal attachment dict."""
-    p = pathlib.Path(file_path).resolve()
+    """Read an allowlisted image, PDF, or Office document into a multimodal attachment dict."""
+    raw_path = pathlib.Path(file_path)
+    if raw_path.is_symlink():
+        raise ValueError(f"Symlink attachments are disallowed: {file_path!r}")
+    p = raw_path.resolve()
     if not p.exists() or not p.is_file():
         raise FileNotFoundError(f"Attachment file not found: {file_path!r}")
+    if p.name.startswith(".") or ({part.lower() for part in p.parts} & _SENSITIVE_ATTACHMENT_DIRS):
+        raise ValueError(f"Hidden or sensitive path disallowed for attachment: {p.name!r}")
     size = p.stat().st_size
     if size > max_bytes:
         raise ValueError(f"Attachment {p.name} exceeds {max_bytes} bytes inline limit ({size} bytes)")
     ext = p.suffix.lower()
-    mime = SUPPORTED_ATTACHMENT_MIMES.get(ext) or mimetypes.guess_type(p.name)[0]
+    mime = SUPPORTED_ATTACHMENT_MIMES.get(ext)
     if not mime:
-        raise ValueError(f"Unsupported or unknown MIME type for attachment {p.name}")
+        raise ValueError(
+            f"Unsupported attachment extension {ext!r} for {p.name}; "
+            f"allowed={sorted(SUPPORTED_ATTACHMENT_MIMES)}"
+        )
     raw = p.read_bytes()
     return {
         "filename": p.name,
@@ -193,13 +201,12 @@ def load_attachment_file(file_path: str | pathlib.Path, max_bytes: int = 15 * 10
 
 
 def _default_llm_transport(req: urllib.request.Request) -> dict[str, Any]:
-    validate_endpoint_url(req.full_url)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            if not raw.strip():
-                raise RuntimeError("LLM API returned empty response body")
-            return json.loads(raw)
+        _, raw_bytes = safe_urlopen(req, timeout=60)
+        raw = raw_bytes.decode("utf-8", errors="replace")
+        if not raw.strip():
+            raise RuntimeError("LLM API returned empty response body")
+        return json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"LLM API returned invalid JSON: {exc.msg}") from None
     except urllib.error.HTTPError as exc:

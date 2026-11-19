@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import pathlib
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Iterator
 
-from calculators import validate_safe_id
+from calculators import safe_parse_yaml, validate_safe_id
+
+
+_PROTECTED_TARGET_NAMES = {
+    ".env",
+    "guardrails.yaml",
+    "brand-truth.md",
+    "brand-truth.template.md",
+    "instincts.md",
+    "visual-dna.json",
+}
+_FORBIDDEN_TARGET_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".kube", ".docker"}
 
 
 def compute_payload_sha256(payload: Any) -> str:
@@ -20,16 +33,48 @@ def compute_payload_sha256(payload: Any) -> str:
 
 
 def check_strategy_lock(brand_truth_path: pathlib.Path) -> str:
-    """Return brand-truth lock status ('locked' or 'draft_pending_review' or 'missing')."""
+    """Return brand-truth lock status ('locked' or 'draft_pending_review' or 'missing') strictly from YAML frontmatter."""
     if not brand_truth_path.exists():
         return "missing"
-    text = brand_truth_path.read_text(encoding="utf-8")
-    for line in text.splitlines()[:20]:
-        s = line.strip()
-        if s.startswith("status:"):
-            val = s.split(":", 1)[1].strip().strip('"').strip("'")
-            return val
+    text = brand_truth_path.read_text(encoding="utf-8").lstrip("\ufeff")
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return "draft_pending_review"
+    end_idx: int | None = None
+    for i in range(1, min(len(lines), 64)):
+        if lines[i].strip() == "---":
+            end_idx = i
+            break
+    if end_idx is None:
+        return "draft_pending_review"
+    fm_text = "\n".join(lines[1:end_idx])
+    try:
+        fm = safe_parse_yaml(fm_text)
+    except ValueError:
+        return "draft_pending_review"
+    if not isinstance(fm, dict):
+        return "draft_pending_review"
+    status = fm.get("status")
+    if isinstance(status, str) and status.strip():
+        return status.strip()
     return "draft_pending_review"
+
+
+def _validate_target_write_path(target_file: pathlib.Path, workspace_root: pathlib.Path | None) -> pathlib.Path:
+    if target_file.is_symlink():
+        raise PermissionError(f"Refusing to write through symlink target: {target_file}")
+    resolved = target_file.resolve()
+    parts_lower = {p.lower() for p in resolved.parts}
+    if parts_lower & _FORBIDDEN_TARGET_DIRS:
+        raise PermissionError(f"Refusing to mutate protected directory target: {resolved}")
+    name_lower = resolved.name.lower()
+    if name_lower.startswith(".env") or name_lower in _PROTECTED_TARGET_NAMES:
+        raise PermissionError(f"Refusing to overwrite protected governance/secret file: {resolved.name}")
+    if workspace_root is not None:
+        ws_resolved = workspace_root.resolve()
+        if not resolved.is_relative_to(ws_resolved):
+            raise PermissionError(f"Target write path {resolved} escapes workspace_root {ws_resolved}")
+    return resolved
 
 
 def _atomic_write_json(path: pathlib.Path, data: Any) -> None:
@@ -54,19 +99,35 @@ class ApprovalGate:
         rollbacks_dir: pathlib.Path,
         brand_truth_path: pathlib.Path | None = None,
         ttl_minutes: int = 60,
+        workspace_root: pathlib.Path | None = None,
     ) -> None:
         self.ledger_path = ledger_path
         self.rollbacks_dir = rollbacks_dir.resolve()
         self.brand_truth_path = brand_truth_path
         self.ttl_minutes = ttl_minutes
+        self.workspace_root = workspace_root.resolve() if workspace_root is not None else None
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
         self.rollbacks_dir.mkdir(parents=True, exist_ok=True)
 
-    def _append_event(self, event: dict[str, Any]) -> None:
+    @contextmanager
+    def _ledger_lock(self) -> Iterator[None]:
+        lock_path = self.ledger_path.parent / f".{self.ledger_path.name}.lock"
+        with open(lock_path, "a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _append_event_unlocked(self, event: dict[str, Any]) -> None:
         with open(self.ledger_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event, sort_keys=True) + "\n")
 
-    def _read_events(self) -> list[dict[str, Any]]:
+    def _append_event(self, event: dict[str, Any]) -> None:
+        with self._ledger_lock():
+            self._append_event_unlocked(event)
+
+    def _read_events_unlocked(self) -> list[dict[str, Any]]:
         if not self.ledger_path.exists():
             return []
         events: list[dict[str, Any]] = []
@@ -75,6 +136,10 @@ class ApprovalGate:
             if line:
                 events.append(json.loads(line))
         return events
+
+    def _read_events(self) -> list[dict[str, Any]]:
+        with self._ledger_lock():
+            return self._read_events_unlocked()
 
     def record_validator_pass(
         self,
@@ -161,95 +226,108 @@ class ApprovalGate:
                     f"Strategy-before-production lock active (brand-truth status={lock_status!r})"
                 )
 
+        safe_target: pathlib.Path | None = None
+        if target_file is not None:
+            safe_target = _validate_target_write_path(target_file, self.workspace_root)
+
         current_time = now or datetime.now(timezone.utc)
         digest = compute_payload_sha256(payload)
-        events = self._read_events()
-
-        # Check single-use nonce consumption
-        if any(
-            e.get("event_type") == "execute_write" and e.get("approval_id") == approval_id
-            for e in events
-        ):
-            raise PermissionError(f"Approval nonce already consumed: {approval_id}")
-
-        # Verify Validator pass within TTL on exact payload digest
         cutoff = current_time - timedelta(minutes=self.ttl_minutes)
-        validator_ok = False
-        for e in reversed(events):
-            if (
-                e.get("event_type") == "validator_pass"
-                and e.get("subtask_id") == subtask_id
-                and e.get("payload_sha256") == digest
-                and e.get("status") == "pass"
+
+        with self._ledger_lock():
+            events = self._read_events_unlocked()
+
+            # Check single-use nonce consumption
+            if any(
+                e.get("event_type") == "execute_write" and e.get("approval_id") == approval_id
+                for e in events
             ):
-                ev_time = datetime.fromisoformat(e["timestamp"])
-                if ev_time.tzinfo is None:
-                    ev_time = ev_time.replace(tzinfo=timezone.utc)
-                if cutoff <= ev_time <= current_time:
-                    validator_ok = True
-                break
-        if not validator_ok:
-            raise PermissionError(
-                f"No fresh Validator pass (<={self.ttl_minutes}m) matching payload sha256 {digest[:12]}"
-            )
+                raise PermissionError(f"Approval nonce already consumed: {approval_id}")
 
-        # Verify most recent Reviewer decision on exact payload digest is approved=True
-        reviewer_ok = False
-        for e in reversed(events):
-            if (
-                e.get("event_type") == "reviewer_decision"
-                and e.get("subtask_id") == subtask_id
-                and e.get("payload_sha256") == digest
-            ):
-                reviewer_ok = e.get("approved") is True
-                break
-        if not reviewer_ok:
-            raise PermissionError("Missing Reviewer approved=true for exact payload hash")
+            # Verify Validator pass within TTL on exact payload digest
+            validator_ok = False
+            for e in reversed(events):
+                if (
+                    e.get("event_type") == "validator_pass"
+                    and e.get("subtask_id") == subtask_id
+                    and e.get("payload_sha256") == digest
+                    and e.get("status") == "pass"
+                ):
+                    ev_time = datetime.fromisoformat(e["timestamp"])
+                    if ev_time.tzinfo is None:
+                        ev_time = ev_time.replace(tzinfo=timezone.utc)
+                    if cutoff <= ev_time <= current_time:
+                        validator_ok = True
+                    break
+            if not validator_ok:
+                raise PermissionError(
+                    f"No fresh Validator pass (<={self.ttl_minutes}m) matching payload sha256 {digest[:12]}"
+                )
 
-        # Verify Composer sign-off matching approval_id & digest
-        composer_ok = any(
-            e.get("event_type") == "composer_signoff"
-            and e.get("approval_id") == approval_id
-            and e.get("subtask_id") == subtask_id
-            and e.get("payload_sha256") == digest
-            for e in events
-        )
-        if not composer_ok:
-            raise PermissionError(f"Missing Composer signoff for approval_id={approval_id}")
+            # Verify most recent Reviewer decision on exact payload digest is approved=True
+            reviewer_ok = False
+            for e in reversed(events):
+                if (
+                    e.get("event_type") == "reviewer_decision"
+                    and e.get("subtask_id") == subtask_id
+                    and e.get("payload_sha256") == digest
+                ):
+                    reviewer_ok = e.get("approved") is True
+                    break
+            if not reviewer_ok:
+                raise PermissionError("Missing Reviewer approved=true for exact payload hash")
 
-        # Write pre-mutation rollback snapshot without overwriting an existing action_id snapshot
-        snap_path = (self.rollbacks_dir / f"{action_id}.json").resolve()
-        if not snap_path.is_relative_to(self.rollbacks_dir):
-            raise ValueError("Rollback snapshot path escapes rollbacks_dir")
-        if snap_path.exists():
-            raise FileExistsError(f"Rollback snapshot already exists for action_id={action_id}")
+            # Verify fresh Composer sign-off matching approval_id & digest
+            composer_ok = False
+            for e in reversed(events):
+                if (
+                    e.get("event_type") == "composer_signoff"
+                    and e.get("approval_id") == approval_id
+                    and e.get("subtask_id") == subtask_id
+                    and e.get("payload_sha256") == digest
+                ):
+                    signoff_time = datetime.fromisoformat(e["timestamp"])
+                    if signoff_time.tzinfo is None:
+                        signoff_time = signoff_time.replace(tzinfo=timezone.utc)
+                    if cutoff <= signoff_time <= current_time:
+                        composer_ok = True
+                    break
+            if not composer_ok:
+                raise PermissionError(f"Missing fresh Composer signoff for approval_id={approval_id}")
 
-        snapshot = {
-            "action_id": action_id,
-            "subtask_id": subtask_id,
-            "approval_id": approval_id,
-            "payload_sha256": digest,
-            "target_file": str(target_file) if target_file else None,
-            "pre_mutation_state": pre_mutation_state,
-            "captured_at": current_time.isoformat(),
-        }
-        _atomic_write_json(snap_path, snapshot)
+            # Write pre-mutation rollback snapshot without overwriting an existing action_id snapshot
+            snap_path = (self.rollbacks_dir / f"{action_id}.json").resolve()
+            if not snap_path.is_relative_to(self.rollbacks_dir):
+                raise ValueError("Rollback snapshot path escapes rollbacks_dir")
+            if snap_path.exists():
+                raise FileExistsError(f"Rollback snapshot already exists for action_id={action_id}")
 
-        if target_file is not None:
-            _atomic_write_json(target_file, payload)
-
-        self._append_event(
-            {
-                "event_type": "execute_write",
+            snapshot = {
                 "action_id": action_id,
                 "subtask_id": subtask_id,
                 "approval_id": approval_id,
                 "payload_sha256": digest,
-                "rollback_snapshot": str(snap_path),
-                "timestamp": current_time.isoformat(),
+                "target_file": str(safe_target) if safe_target else None,
+                "pre_mutation_state": pre_mutation_state,
+                "captured_at": current_time.isoformat(),
             }
-        )
-        return {"status": "executed", "action_id": action_id, "rollback_snapshot": str(snap_path)}
+            _atomic_write_json(snap_path, snapshot)
+
+            if safe_target is not None:
+                _atomic_write_json(safe_target, payload)
+
+            self._append_event_unlocked(
+                {
+                    "event_type": "execute_write",
+                    "action_id": action_id,
+                    "subtask_id": subtask_id,
+                    "approval_id": approval_id,
+                    "payload_sha256": digest,
+                    "rollback_snapshot": str(snap_path),
+                    "timestamp": current_time.isoformat(),
+                }
+            )
+            return {"status": "executed", "action_id": action_id, "rollback_snapshot": str(snap_path)}
 
     def rollback(self, action_id: str) -> dict[str, Any]:
         """Restore pre-mutation state from data/rollbacks/<action_id>.json."""
@@ -261,7 +339,8 @@ class ApprovalGate:
         target = snapshot.get("target_file")
         pre_state = snapshot["pre_mutation_state"]
         if target:
-            _atomic_write_json(pathlib.Path(target), pre_state)
+            safe_target = _validate_target_write_path(pathlib.Path(target), self.workspace_root)
+            _atomic_write_json(safe_target, pre_state)
         self._append_event(
             {
                 "event_type": "rollback_executed",

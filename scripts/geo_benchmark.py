@@ -8,7 +8,9 @@ import json
 import os
 import pathlib
 import re
+import socket
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
@@ -19,27 +21,119 @@ if str(REPO_ROOT) not in sys.path:
 
 
 _URL_RE = re.compile(r"https?://[^\s)\]>\"']+")
+_INT_OR_HEX_HOST_RE = re.compile(r"^(?:0x[0-9a-f]+|0[0-7]+|[0-9]+)$", re.IGNORECASE)
+_SENSITIVE_PATH_PARTS = {".git", ".ssh", ".gnupg", ".aws", ".kube", ".docker"}
+MAX_HTTP_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MiB hard cap
 
 
-def validate_endpoint_url(url: str) -> str:
-    """Enforce SSRF protections: HTTPS required except loopback localhost/127.0.0.1 for Ollama."""
-    parsed = urllib.parse.urlparse(url)
-    host = (parsed.hostname or "").lower()
-    if not host or host in ("0.0.0.0", "metadata.google.internal", "metadata"):
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Disable HTTP 3xx redirects to prevent redirect-based SSRF bypasses."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        raise urllib.error.HTTPError(
+            req.full_url,
+            code,
+            f"HTTP redirect ({code}) blocked for SSRF protection",
+            headers,
+            fp,
+        )
+
+
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    check_ip: ipaddress.IPv4Address | ipaddress.IPv6Address = ip
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        check_ip = ip.ipv4_mapped
+    if check_ip.is_loopback:
+        return False
+    return bool(
+        check_ip.is_private
+        or check_ip.is_link_local
+        or check_ip.is_unspecified
+        or check_ip.is_reserved
+        or check_ip.is_multicast
+        or not check_ip.is_global
+    )
+
+
+def validate_endpoint_url(url: str, resolve_dns: bool = True) -> str:
+    """Enforce SSRF protections: HTTPS required except loopback; block userinfo, internal IPs, and DNS rebinding."""
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("Endpoint URL must be a non-empty string")
+    cleaned = url.strip()
+    if len(cleaned) > 2048 or any(ord(ch) < 32 or ord(ch) == 127 for ch in cleaned):
+        raise ValueError("Invalid control characters or length in endpoint URL")
+
+    parsed = urllib.parse.urlparse(cleaned)
+    if parsed.scheme not in ("https", "http"):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme!r}")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Userinfo (@) is disallowed in endpoint URLs")
+
+    host = (parsed.hostname or "").rstrip(".").lower()
+    if not host or host in ("0.0.0.0", "metadata.google.internal", "metadata", "instance-data") or host.endswith(".internal"):
         raise ValueError(f"Blocked or invalid endpoint host: {url!r}")
+    if _INT_OR_HEX_HOST_RE.match(host):
+        raise ValueError(f"Numeric/octal/hex IP literal disallowed in endpoint URL: {host!r}")
+
     is_loopback = host in ("localhost", "127.0.0.1", "::1")
     if parsed.scheme == "http" and not is_loopback:
         raise ValueError(f"Plain HTTP disallowed for non-local endpoint: {url!r}")
-    if parsed.scheme not in ("https", "http"):
-        raise ValueError(f"Unsupported URL scheme: {parsed.scheme!r}")
+
+    ip_literal: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None
     try:
-        ip = ipaddress.ip_address(host)
-        if (ip.is_link_local or ip.is_private or ip.is_unspecified) and not ip.is_loopback:
-            raise ValueError(f"Private/link-local SSRF target blocked: {host}")
-    except ValueError as exc:
-        if "SSRF" in str(exc):
-            raise
-    return url
+        ip_literal = ipaddress.ip_address(host)
+    except ValueError:
+        ip_literal = None
+
+    if ip_literal is not None:
+        if _is_blocked_ip(ip_literal):
+            raise ValueError(f"Private/link-local/reserved SSRF target blocked: {host}")
+        return cleaned
+
+    if resolve_dns and not is_loopback:
+        try:
+            infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        except OSError:
+            # Offline/sandbox environments without external DNS still allow valid hostnames;
+            # live connections validate again at transport time.
+            infos = []
+        for info in infos:
+            addr_str = str(info[4][0]).split("%", 1)[0]
+            try:
+                resolved_ip = ipaddress.ip_address(addr_str)
+            except ValueError:
+                continue
+            unwrapped = resolved_ip.ipv4_mapped if isinstance(resolved_ip, ipaddress.IPv6Address) and resolved_ip.ipv4_mapped else resolved_ip
+            if unwrapped.is_loopback or _is_blocked_ip(resolved_ip):
+                raise ValueError(f"DNS resolved {host!r} to blocked internal IP {addr_str}")
+
+    return cleaned
+
+
+def safe_urlopen(
+    req: urllib.request.Request,
+    timeout: float = 25,
+    max_bytes: int = MAX_HTTP_RESPONSE_BYTES,
+) -> tuple[int, bytes]:
+    """Execute an SSRF-validated HTTP request with redirects disabled and response size bounded."""
+    validate_endpoint_url(req.full_url)
+    opener = urllib.request.build_opener(_NoRedirectHandler())
+    with opener.open(req, timeout=timeout) as resp:
+        data = resp.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise RuntimeError(f"HTTP response exceeded {max_bytes} bytes safety cap")
+        return int(getattr(resp, "status", 200)), data
+
+
+def _read_safe_cli_file(file_arg: str) -> str:
+    raw_path = pathlib.Path(file_arg)
+    if raw_path.is_symlink():
+        raise ValueError(f"Symlink file input blocked: {file_arg!r}")
+    resolved = raw_path.resolve()
+    parts_lower = {part.lower() for part in resolved.parts}
+    if resolved.name.startswith(".env") or parts_lower & _SENSITIVE_PATH_PARTS:
+        raise ValueError(f"Access to sensitive file blocked: {file_arg!r}")
+    return resolved.read_text(encoding="utf-8")
 
 
 def build_10_buyer_prompts(brand_category: str, target_icp: str, competitors: list[str]) -> list[str]:
@@ -142,8 +236,8 @@ def query_openai_compatible(base_url: str, api_key: str, model: str, prompt: str
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    _, raw_bytes = safe_urlopen(req, timeout=20)
+    data = json.loads(raw_bytes.decode("utf-8"))
     return data["choices"][0]["message"]["content"]
 
 
@@ -167,13 +261,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.audit_file:
         from calculators.fanout_audit import audit_page_fanout_readiness
 
-        content = pathlib.Path(args.audit_file).read_text(encoding="utf-8")
+        content = _read_safe_cli_file(args.audit_file)
         out = audit_page_fanout_readiness(content=content, primary_query=f"{args.category} for {args.icp}")
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
 
     if args.fixture:
-        data = json.loads(pathlib.Path(args.fixture).read_text(encoding="utf-8"))
+        data = json.loads(_read_safe_cli_file(args.fixture))
         out = score_benchmark_responses(
             brand_name=data["brand_name"],
             brand_domain=data["brand_domain"],

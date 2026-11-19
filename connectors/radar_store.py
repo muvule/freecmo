@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import pathlib
 import re
 import sqlite3
@@ -32,7 +33,7 @@ class RadarStore:
         return conn
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS competitors (
@@ -89,7 +90,7 @@ class RadarStore:
             )
 
     def upsert_competitor(self, name: str, domain: str, positioning: str = "") -> int:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO competitors(name, domain, positioning)
@@ -108,7 +109,7 @@ class RadarStore:
         organic_rank: float | None = None,
         geo_citation_score: float | None = None,
     ) -> int:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO keywords(term, intent, organic_rank, geo_citation_score)
@@ -124,7 +125,7 @@ class RadarStore:
             return int(row["id"])
 
     def upsert_pain_cluster(self, cluster_name: str, summary: str, increment: int = 1) -> int:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO pain_clusters(cluster_name, summary, mention_count)
@@ -150,11 +151,11 @@ class RadarStore:
         cluster_id = self.upsert_pain_cluster(pain_cluster_name, title) if pain_cluster_name else None
         comp_id = None
         if competitor_name:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn, conn:
                 r = conn.execute("SELECT id FROM competitors WHERE name = ?", (competitor_name,)).fetchone()
                 if r:
                     comp_id = int(r["id"])
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 INSERT INTO community_threads(platform, url, title, body_excerpt, pain_cluster_id, competitor_id)
@@ -173,7 +174,7 @@ class RadarStore:
         fts_query = _escape_fts5_query(query)
         if fts_query == '""':
             return []
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 """
                 SELECT ct.id, ct.platform, ct.url, ct.title, ct.body_excerpt, pc.cluster_name
@@ -189,7 +190,7 @@ class RadarStore:
         return [dict(r) for r in rows]
 
     def top_pain_clusters(self, limit: int = 10) -> list[dict[str, Any]]:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 "SELECT id, cluster_name, summary, mention_count FROM pain_clusters ORDER BY mention_count DESC LIMIT ?",
                 (limit,),

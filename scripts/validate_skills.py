@@ -148,10 +148,14 @@ def run_cmo_check_block(block_yaml: str, declared_calculators: list[str]) -> lis
             return [f"cmo-check missing required key {req!r}"]
 
     calc_mod_name = str(data["calculator"])
-    if declared_calculators and calc_mod_name not in declared_calculators:
+    if not re.fullmatch(r"[a-z0-9_]+", calc_mod_name):
+        return [f"Invalid cmo-check calculator module name {calc_mod_name!r}"]
+    if not declared_calculators or calc_mod_name not in declared_calculators:
         return [f"cmo-check calculator {calc_mod_name!r} not declared in frontmatter calculators={declared_calculators!r}"]
 
     fn_name = str(data["function"])
+    if fn_name.startswith("_") or not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]*", fn_name):
+        return [f"Invalid or private cmo-check function name {fn_name!r}"]
     inputs = data["inputs"]
     expected = data["expected"]
     if not isinstance(inputs, dict) or not isinstance(expected, dict):
@@ -159,8 +163,8 @@ def run_cmo_check_block(block_yaml: str, declared_calculators: list[str]) -> lis
 
     mod = importlib.import_module(f"calculators.{calc_mod_name}")
     fn = getattr(mod, fn_name, None)
-    if fn is None:
-        return [f"Function {fn_name!r} not found in calculators.{calc_mod_name}"]
+    if fn is None or not callable(fn):
+        return [f"Callable function {fn_name!r} not found in calculators.{calc_mod_name}"]
 
     actual = fn(**inputs)
     return _assert_expected_match(actual, expected, f"{calc_mod_name}.{fn_name}")

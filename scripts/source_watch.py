@@ -8,6 +8,7 @@ import pathlib
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -15,7 +16,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.geo_benchmark import validate_endpoint_url
+from scripts.geo_benchmark import safe_urlopen, validate_endpoint_url
 from scripts.validate_skills import PRIMARY_SOURCE_DOMAINS
 
 
@@ -32,8 +33,9 @@ def scan_skill_sources(skills_dir: pathlib.Path, offline: bool = True) -> dict[s
         sec = text[idx:] if idx != -1 else ""
         urls = sorted(set(_URL_RE.findall(sec)))
         for url in urls:
-            host = url.split("//", 1)[1].split("/", 1)[0].lower()
-            domain_ok = host in PRIMARY_SOURCE_DOMAINS
+            parsed = urllib.parse.urlparse(url)
+            host = (parsed.hostname or "").rstrip(".").lower()
+            domain_ok = (parsed.scheme == "https") and (parsed.username is None) and (host in PRIMARY_SOURCE_DOMAINS)
             status = "offline_ok" if domain_ok else "disallowed_domain"
             if not domain_ok:
                 errors += 1
@@ -41,8 +43,8 @@ def scan_skill_sources(skills_dir: pathlib.Path, offline: bool = True) -> dict[s
                 try:
                     safe_url = validate_endpoint_url(url)
                     req = urllib.request.Request(safe_url, method="HEAD", headers={"User-Agent": "freecmo-source-watch/0.1"})
-                    with urllib.request.urlopen(req, timeout=10) as resp:
-                        status = f"http_{resp.status}"
+                    http_status, _ = safe_urlopen(req, timeout=10, max_bytes=65536)
+                    status = f"http_{http_status}"
                 except Exception as exc:
                     status = f"error:{exc}"
                     errors += 1

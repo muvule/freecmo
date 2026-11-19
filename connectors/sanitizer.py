@@ -21,7 +21,21 @@ _INJECTION_PATTERNS = [
 ]
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
-_SECRET_RE = re.compile(r"\b(?:sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{20,}|ghp_[A-Za-z0-9]{20,})\b")
+_SECRET_RE = re.compile(
+    r"(?:"
+    r"\bsk-[A-Za-z0-9_-]{16,}\b"
+    r"|\b(?:rk|pk)_(?:live|test)_[A-Za-z0-9]{10,}\b"
+    r"|\bAIza[0-9A-Za-z_-]{20,}\b"
+    r"|\bya29\.[0-9A-Za-z_.-]{16,}\b"
+    r"|\bgh[pousr]_[A-Za-z0-9]{20,}\b"
+    r"|\bgithub_pat_[A-Za-z0-9_]{20,}\b"
+    r"|\bEAA[A-Za-z0-9]{16,}\b"
+    r"|\bshpat_[A-Za-z0-9]{16,}\b"
+    r"|\bxox[baprs]-[0-9A-Za-z-]{12,}\b"
+    r"|(?i:\bBearer\s+[A-Za-z0-9._~+/=-]{20,})"
+    r"|-----BEGIN\s+[A-Z0-9 ]*PRIVATE KEY-----"
+    r")"
+)
 
 
 def sanitize_untrusted_text(text: str, redact_pii: bool = False) -> str:

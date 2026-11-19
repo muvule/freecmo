@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import hashlib
+import hmac
+import os
 import pathlib
 import sqlite3
 from typing import Any
@@ -10,11 +13,14 @@ from typing import Any
 from calculators import to_float
 
 
-def anonymize_customer_key(raw_email_or_id: str) -> str:
-    """Hash customer identifier with SHA-256 so raw PII is never stored in radar.db."""
+def anonymize_customer_key(raw_email_or_id: str, salt: str | None = None) -> str:
+    """Hash customer identifier with SHA-256 (or HMAC-SHA256 when FREECMO_PII_SALT is set) so raw PII is never stored."""
     normalized = (raw_email_or_id or "").strip().lower()
     if not normalized:
         raise ValueError("Customer identifier cannot be empty")
+    effective_salt = salt if salt is not None else os.environ.get("FREECMO_PII_SALT", "")
+    if effective_salt:
+        return hmac.new(effective_salt.encode("utf-8"), normalized.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
 
 
@@ -34,7 +40,7 @@ class IdentityResolver:
         return conn
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS cohort_profiles (
@@ -64,7 +70,7 @@ class IdentityResolver:
         acquisition_cost_usd: float | None = None,
     ) -> str:
         anon_id = anonymize_customer_key(raw_identifier)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             existing = conn.execute(
                 "SELECT * FROM cohort_profiles WHERE anon_customer_id = ?", (anon_id,)
             ).fetchone()
@@ -139,7 +145,7 @@ class IdentityResolver:
 
     def summarize_segments(self) -> list[dict[str, Any]]:
         """Aggregate unified cohort LTV, repeat rate, and acquisition cost by CRM segment."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 """
                 SELECT

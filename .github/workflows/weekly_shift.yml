@@ -50,8 +50,10 @@ jobs:
           STRIPE_RESTRICTED_KEY: ${{ secrets.STRIPE_RESTRICTED_KEY }}
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
+          FREECMO_PII_SALT: ${{ secrets.FREECMO_PII_SALT }}
+          DEMO_MODE: ${{ inputs.demo_mode }}
         run: |
-          if [ "${{ inputs.demo_mode }}" = "false" ]; then
+          if [ "$DEMO_MODE" = "false" ]; then
             python3 scripts/sync_platforms.py --emit-brief --output-brief data/weekly_brief.json
           else
             python3 scripts/sync_platforms.py --demo-fixture --emit-brief --output-brief data/weekly_brief.json

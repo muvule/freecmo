@@ -226,6 +226,27 @@ MCP_TOOLS: list[dict[str, Any]] = [
 ]
 
 
+def _resolve_safe_workspace_file(
+    raw_path: str,
+    repo_root: pathlib.Path,
+    allowed_suffixes: tuple[str, ...],
+) -> pathlib.Path:
+    ws_root = repo_root.resolve()
+    candidate = pathlib.Path(raw_path)
+    raw_target = (ws_root / candidate) if not candidate.is_absolute() else candidate
+    if raw_target.is_symlink():
+        raise ValueError("Symlink file access is disallowed in MCP tools")
+    resolved = raw_target.resolve()
+    if not resolved.is_relative_to(ws_root):
+        raise ValueError("Path must reside inside repository workspace")
+    rel_parts = resolved.relative_to(ws_root).parts
+    if any(part.startswith(".") for part in rel_parts):
+        raise ValueError("Hidden/dotfile paths (such as .env or .git) are disallowed in MCP tools")
+    if resolved.suffix.lower() not in allowed_suffixes:
+        raise ValueError(f"Unsupported file extension {resolved.suffix!r}; allowed={allowed_suffixes}")
+    return resolved
+
+
 def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.Path = REPO_ROOT) -> dict[str, Any]:
     """Execute an MCP tool call deterministically and return JSON-serializable output."""
     if arguments is None:
@@ -265,9 +286,11 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
         fp = args.pop("file_path", None)
         content = args.pop("content", None)
         if fp:
-            target = (repo_root / str(fp)).resolve() if not pathlib.Path(str(fp)).is_absolute() else pathlib.Path(str(fp)).resolve()
-            if not target.is_relative_to(repo_root.resolve()):
-                raise ValueError("file_path must reside inside repository workspace")
+            target = _resolve_safe_workspace_file(
+                str(fp),
+                repo_root,
+                allowed_suffixes=(".html", ".htm", ".md", ".markdown", ".txt"),
+            )
             content = target.read_text(encoding="utf-8")
         return audit_page_fanout_readiness(content=content, **args)
     if name == "freecmo_validate_creative_spec":
@@ -307,9 +330,7 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
     if name == "freecmo_weekly_brief":
         sp = args.get("state_path")
         if sp:
-            target = pathlib.Path(str(sp)).resolve()
-            if not target.is_relative_to(repo_root.resolve()):
-                raise ValueError("state_path must reside inside repository workspace")
+            target = _resolve_safe_workspace_file(str(sp), repo_root, allowed_suffixes=(".json",))
         else:
             target = repo_root / "data" / "latest_sync_state.json"
         state = json.loads(target.read_text(encoding="utf-8")) if target.exists() else {}

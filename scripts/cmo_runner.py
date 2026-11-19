@@ -12,12 +12,14 @@ import json
 import os
 import pathlib
 import sys
+import tempfile
 from typing import Any
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from calculators import validate_safe_id
 from calculators.cac_ltv import compute_cac_ltv
 from connectors.ad_platform_sync import detect_configured_platforms, sync_all_platforms
 from connectors.approval_gate import check_strategy_lock
@@ -36,6 +38,7 @@ from scripts.validate_skills import split_frontmatter
 
 
 BOOTSTRAP_SAFE_SKILLS = {"cmo-init", "unit-economics-floors", "tracking-health-audit"}
+_MAX_CLI_FILE_BYTES = 2 * 1024 * 1024
 
 
 def _clean_single_line(raw: str) -> str:
@@ -43,6 +46,7 @@ def _clean_single_line(raw: str) -> str:
 
 
 def _find_skill_path(skill_name: str, repo_root: pathlib.Path) -> pathlib.Path:
+    validate_safe_id(skill_name, "skill_name")
     matches = list((repo_root / "skills").glob(f"*/{skill_name}/SKILL.md"))
     if not matches:
         raise FileNotFoundError(f"Skill {skill_name!r} not found under skills/*/*/SKILL.md")
@@ -228,9 +232,37 @@ def cmd_run_skill(
     return res
 
 
-def _load_cli_text_or_json(raw_arg: str) -> Any:
+_SENSITIVE_CLI_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".kube", ".docker"}
+
+
+def _read_safe_cli_input(raw_arg: str, repo_root: pathlib.Path) -> str:
+    """Read CLI file argument only if it is a safe, non-sensitive path inside repo_root or temp dir."""
+    if not raw_arg or "\n" in raw_arg or "\r" in raw_arg or len(raw_arg) > 512:
+        return raw_arg
     p_candidate = pathlib.Path(raw_arg)
-    raw = p_candidate.read_text(encoding="utf-8") if p_candidate.exists() and p_candidate.is_file() else raw_arg
+    try:
+        exists_file = p_candidate.exists() and p_candidate.is_file()
+    except OSError:
+        return raw_arg
+    if not exists_file:
+        return raw_arg
+    if p_candidate.is_symlink():
+        raise ValueError(f"Symlink file input is disallowed: {raw_arg!r}")
+    resolved = p_candidate.resolve()
+    ws_root = repo_root.resolve()
+    tmp_root = pathlib.Path(tempfile.gettempdir()).resolve()
+    if not (resolved.is_relative_to(ws_root) or resolved.is_relative_to(tmp_root)):
+        raise ValueError(f"File path {raw_arg!r} must reside inside workspace or system temp directory")
+    parts_lower = {part.lower() for part in resolved.parts}
+    if resolved.name.startswith(".") or (parts_lower & _SENSITIVE_CLI_DIRS):
+        raise ValueError(f"Hidden or sensitive file path disallowed: {raw_arg!r}")
+    if resolved.stat().st_size > _MAX_CLI_FILE_BYTES:
+        raise ValueError(f"Input file exceeds {_MAX_CLI_FILE_BYTES} bytes limit: {raw_arg!r}")
+    return resolved.read_text(encoding="utf-8")
+
+
+def _load_cli_text_or_json(raw_arg: str, repo_root: pathlib.Path | None = None) -> Any:
+    raw = _read_safe_cli_input(raw_arg, repo_root or REPO_ROOT)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -293,10 +325,8 @@ def main(argv: list[str] | None = None) -> int:
             "composers_brief": brief,
         }
     elif args.command == "run-skill":
-        brief_arg = args.brief
-        p_candidate = pathlib.Path(brief_arg)
-        brief_txt = p_candidate.read_text(encoding="utf-8") if p_candidate.exists() and p_candidate.is_file() else brief_arg
-        parsed_slice = _load_cli_text_or_json(args.data_slice) if args.data_slice else None
+        brief_txt = _read_safe_cli_input(args.brief, root)
+        parsed_slice = _load_cli_text_or_json(args.data_slice, root) if args.data_slice else None
         out = cmd_run_skill(
             repo_root=root,
             skill_name=args.skill,

@@ -28,6 +28,9 @@ def mine_ngram_waste(
     max_ngram: int = 2,
 ) -> dict[str, Any]:
     """Cluster zero-conversion or over-CAC spend by 1-gram and 2-gram tokens."""
+    n_cap = int(max_ngram)
+    if n_cap < 1 or n_cap > 5:
+        raise ValueError("max_ngram must be between 1 and 5")
     cac = to_float(allowable_cac_usd)
     trace = "aggregate spend/clicks/conversions per 1..max_ngram; flag ngrams with conversions==0 and spend>=min_waste_spend_usd"
     if not search_terms or cac is None or cac <= 0:

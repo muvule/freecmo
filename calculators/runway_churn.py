@@ -135,6 +135,7 @@ def simulate_cash_flow_runway(
     if (
         cac <= 0
         or h_months < 1
+        or h_months > 120
         or churn < 0
         or churn > 100
         or cash < 0
@@ -143,7 +144,7 @@ def simulate_cash_flow_runway(
         or gp_per_cust < 0
     ):
         raise ValueError(
-            "Invalid inputs: allowable_cac_usd > 0, horizon_months >= 1, 0 <= churn <= 100, cash >= 0, spend >= 0, fixed_ops >= 0, gp_per_cust >= 0 required"
+            "Invalid inputs: allowable_cac_usd > 0, 1 <= horizon_months <= 120, 0 <= churn <= 100, cash >= 0, spend >= 0, fixed_ops >= 0, gp_per_cust >= 0 required"
         )
 
     new_cohort = spend / cac

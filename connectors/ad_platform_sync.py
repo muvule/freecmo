@@ -23,7 +23,7 @@ from typing import Any, Callable
 from calculators import to_float
 from connectors.csv_normalizer import neutralize_csv_cell
 from connectors.identity_resolver import IdentityResolver, anonymize_customer_key
-from scripts.geo_benchmark import validate_endpoint_url
+from scripts.geo_benchmark import safe_urlopen, validate_endpoint_url
 
 
 SUPPORTED_PLATFORMS = (
@@ -76,11 +76,10 @@ def _date_window(lookback_days: int) -> tuple[str, str]:
 
 
 def _default_transport(req: urllib.request.Request) -> dict[str, Any]:
-    validate_endpoint_url(req.full_url)
     try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            return json.loads(raw) if raw.strip() else {}
+        _, raw_bytes = safe_urlopen(req, timeout=25)
+        raw = raw_bytes.decode("utf-8", errors="replace")
+        return json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Platform API returned invalid JSON: {exc.msg}") from None
     except urllib.error.HTTPError as exc:
