@@ -132,6 +132,18 @@ PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
             "multimodal_creative": "llava:13b",
         },
     },
+    "ollama-7b": {
+        "protocol": "openai_chat",
+        "base_url": "http://127.0.0.1:11434/v1",
+        "key_env": "OLLAMA_API_KEY",
+        "requires_key": False,
+        "models": {
+            "fast_decider": "qwen2.5:7b",
+            "balanced_worker": "qwen2.5:7b",
+            "deep_orchestrator": "qwen2.5:7b",
+            "multimodal_creative": "llava:7b",
+        },
+    },
     "lmstudio": {
         "protocol": "openai_chat",
         "base_url": "http://127.0.0.1:1234/v1",
@@ -256,7 +268,12 @@ def resolve_llm_route(
         raise ValueError(f"Unsupported LLM provider {requested!r}; supported={sorted(PROVIDER_DEFAULTS)}")
 
     spec = PROVIDER_DEFAULTS[requested]
-    base_prefix = "GEMINI" if requested == "gemini-hydrogen" else requested.upper()
+    if requested == "gemini-hydrogen":
+        base_prefix = "GEMINI"
+    elif requested == "ollama-7b":
+        base_prefix = "OLLAMA"
+    else:
+        base_prefix = requested.upper()
     base_url = (e.get(f"{base_prefix}_BASE_URL") or spec["base_url"]).rstrip("/")
     validate_endpoint_url(base_url)
 

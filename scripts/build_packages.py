@@ -101,6 +101,24 @@ RUNTIME_PROFILES: dict[str, list[str]] = {
         "seo-geo-code-pr",
         "comms-press-release-writer",
     ],
+    "local-entrepreneur": [
+        "weekly-cmo-brief",
+        "unit-economics-floors",
+        "offline-local-channels",
+        "local-seo-gbp-optimizer",
+        "review-referral-flywheel",
+        "churn-winback-engine",
+        "blended-mer-reconciler",
+        "tracking-health-audit",
+        "social-seo-repurposer",
+        "display-native-ad-studio",
+        "editorial-blog-linkedin-writer",
+        "landing-page-cro-audit",
+        "email-deliverability-flows",
+        "community-pain-radar",
+        "launch-campaign-playbook",
+        "competitor-battlecard-pricing",
+    ],
 }
 
 

@@ -19,7 +19,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from calculators import validate_safe_id
+from calculators import format_money, normalize_currency, resolve_amount, validate_safe_id
 from calculators.cac_ltv import compute_cac_ltv
 from connectors.ad_platform_sync import detect_configured_platforms, sync_all_platforms
 from connectors.approval_gate import check_strategy_lock
@@ -66,39 +66,52 @@ def cmd_init(
     repo_root: pathlib.Path,
     brand_name: str,
     website_url: str,
-    aov_usd: float,
-    gross_margin_pct: float,
-    monthly_budget_usd: float,
-    description: str,
+    aov_usd: float | None = None,
+    gross_margin_pct: float = 0.0,
+    monthly_budget_usd: float | None = None,
+    description: str = "SMB product/service",
+    aov: float | None = None,
+    monthly_budget: float | None = None,
+    currency: str = "USD",
 ) -> dict[str, Any]:
-    econ = compute_cac_ltv(aov_usd=aov_usd, gross_margin_pct=gross_margin_pct)
+    cur = normalize_currency(currency)
+    aov_val = resolve_amount(aov, aov_usd)
+    budget_val = resolve_amount(monthly_budget, monthly_budget_usd)
+    budget_num = float(budget_val) if budget_val is not None else 2000.0
+    econ = compute_cac_ltv(aov=aov_val, gross_margin_pct=gross_margin_pct, currency=cur)
     floors = econ
     bt_path = repo_root / ".agents" / "brand-truth.md"
     bt_path.parent.mkdir(parents=True, exist_ok=True)
     safe_brand = _clean_single_line(brand_name)
     safe_url = _clean_single_line(website_url)
     safe_desc = _clean_single_line(description)
-    budget_num = float(monthly_budget_usd)
+    aov_disp = format_money(aov_val, cur) if aov_val is not None else "unknown"
+    gp_disp = floors.get("gross_profit_per_order_formatted", "unknown")
+    cac_disp = floors.get("allowable_cac_formatted", "unknown")
+    cac_var = "allowable_cac_usd" if cur == "USD" else "allowable_cac"
     content = (
         "---\n"
         "status: draft_pending_review\n"
         f"brand_name: {json.dumps(safe_brand)}\n"
         f"website_url: {json.dumps(safe_url)}\n"
+        f"currency: {json.dumps(cur)}\n"
+        f"monthly_budget: {budget_num}\n"
         f"monthly_budget_usd: {budget_num}\n"
         "---\n\n"
         f"# Brand Truth — {safe_brand}\n\n"
         "> Review the unit economics and positioning below, then change `status: draft_pending_review` to `status: locked` to unlock production skills.\n\n"
         "## 1. Company & Offer Summary\n"
         f"- **Website:** {safe_url}\n"
+        f"- **Currency:** {cur}\n"
         f"- **Description:** {safe_desc}\n\n"
         "## 2. Deterministic Unit Economics Floors (`calculators/cac_ltv.py`)\n"
-        f"- **AOV:** ${aov_usd:.2f}\n"
+        f"- **AOV:** {aov_disp}\n"
         f"- **Gross Margin:** {gross_margin_pct:.1f}%\n"
-        f"- **Gross Profit per Order:** ${floors.get('gross_profit_per_order_usd', 'unknown')}\n"
+        f"- **Gross Profit per Order:** {gp_disp}\n"
         f"- **Break-Even ROAS:** {floors.get('break_even_roas', 'unknown')}x\n"
-        f"- **Allowable CAC:** ${floors.get('allowable_cac_usd', 'unknown')}\n\n"
+        f"- **Allowable CAC:** {cac_disp}\n\n"
         "## 3. Active Strategic Bets (With Disproof Conditions)\n"
-        "- Bet 1: Validate primary buyer pain angle within allowable CAC (`disproof_condition: conversions == 0 after 2.0x allowable_cac_usd spend`).\n\n"
+        f"- Bet 1: Validate primary buyer pain angle within allowable CAC (`disproof_condition: conversions == 0 after 2.0x {cac_var} spend`).\n\n"
         "## 4. Killed Assumptions\n"
         "| Bet ID | Disproven Angle / Hypothesis | Quantitative Evidence | Date Killed | Resurrection Condition |\n"
         "|---|---|---|---|---|\n"
@@ -109,6 +122,7 @@ def cmd_init(
     bt_path.write_text(content, encoding="utf-8")
     return {
         "brand_truth_path": str(bt_path),
+        "currency": cur,
         "strategy_lock_status": "draft_pending_review",
         "unit_economics": econ,
     }
@@ -274,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", default=str(REPO_ROOT), help="Workspace root")
     parser.add_argument(
         "--provider",
-        help="Override LLM provider (gemini-hydrogen | gemini | ollama | lmstudio | openrouter | deepseek | groq | openai | anthropic)",
+        help="Override LLM provider (gemini-hydrogen | gemini | ollama | ollama-7b | lmstudio | openrouter | deepseek | groq | openai | anthropic)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -283,9 +297,12 @@ def main(argv: list[str] | None = None) -> int:
     p_init = sub.add_parser("init", help="Bootstrap .agents/brand-truth.md and deterministic unit economics")
     p_init.add_argument("--brand-name", required=True)
     p_init.add_argument("--website-url", required=True)
-    p_init.add_argument("--aov-usd", type=float, required=True)
+    p_init.add_argument("--currency", default="USD", help="ISO-4217 currency code (e.g. USD, KES, IDR, MXN)")
+    p_init.add_argument("--aov-usd", type=float)
+    p_init.add_argument("--aov", type=float)
     p_init.add_argument("--gross-margin-pct", type=float, required=True)
-    p_init.add_argument("--monthly-budget-usd", type=float, default=2000.0)
+    p_init.add_argument("--monthly-budget-usd", type=float)
+    p_init.add_argument("--monthly-budget", type=float)
     p_init.add_argument("--description", default="SMB product/service")
 
     p_sync = sub.add_parser("sync-brief", help="Sync ad/revenue platforms and emit Weekly Composer's Brief")
@@ -307,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         out = cmd_status(root, env, args.provider)
     elif args.command == "init":
+        if args.aov is None and args.aov_usd is None:
+            parser.error("init requires --aov or --aov-usd")
         out = cmd_init(
             repo_root=root,
             brand_name=args.brand_name,
@@ -315,6 +334,9 @@ def main(argv: list[str] | None = None) -> int:
             gross_margin_pct=args.gross_margin_pct,
             monthly_budget_usd=args.monthly_budget_usd,
             description=args.description,
+            aov=args.aov,
+            monthly_budget=args.monthly_budget,
+            currency=args.currency,
         )
     elif args.command == "sync-brief":
         sync_res = sync_all_platforms(repo_root=root, env=env, demo_fixture=args.demo_fixture)

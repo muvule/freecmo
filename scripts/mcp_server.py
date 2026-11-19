@@ -24,6 +24,10 @@ from calculators.cac_ltv import (
 )
 from calculators.creative_fatigue import compute_launch_pacing_guard, detect_creative_fatigue
 from calculators.fanout_audit import audit_page_fanout_readiness
+from calculators.local_channels import (
+    compute_offline_channel_economics,
+    evaluate_low_bandwidth_readiness,
+)
 from calculators.mer import compute_blended_mer
 from calculators.runway_churn import (
     compute_churn_and_nrr,
@@ -39,16 +43,19 @@ from scripts.next_action import generate_next_actions
 MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "freecmo_unit_economics",
-        "description": "Compute gross-profit LTV, break-even ROAS, allowable CAC, and payback period.",
+        "description": "Compute gross-profit LTV, break-even ROAS, allowable CAC, and payback period in any currency.",
         "inputSchema": {
             "type": "object",
-            "required": ["aov_usd", "gross_margin_pct"],
+            "required": ["gross_margin_pct"],
             "properties": {
+                "currency": {"type": "string", "default": "USD"},
+                "aov": {"type": "number"},
                 "aov_usd": {"type": "number"},
                 "gross_margin_pct": {"type": "number"},
                 "repeat_orders": {"type": "number", "default": 1.0},
                 "target_payback_months": {"type": "number", "default": 3.0},
                 "monthly_orders_per_customer": {"type": "number", "default": 1.0},
+                "actual_spend": {"type": "number"},
                 "actual_spend_usd": {"type": "number"},
                 "new_customers": {"type": "number"},
             },
@@ -56,11 +63,13 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "freecmo_promo_breakeven",
-        "description": "Compute post-discount gross profit erosion and required volume lift % to break even on a promo.",
+        "description": "Compute post-discount gross profit erosion and required volume lift % to break even on a promo in any currency.",
         "inputSchema": {
             "type": "object",
-            "required": ["aov_usd", "gross_margin_pct", "discount_pct"],
+            "required": ["gross_margin_pct", "discount_pct"],
             "properties": {
+                "currency": {"type": "string", "default": "USD"},
+                "aov": {"type": "number"},
                 "aov_usd": {"type": "number"},
                 "gross_margin_pct": {"type": "number"},
                 "discount_pct": {"type": "number"},
@@ -69,13 +78,16 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "freecmo_creator_commission_cap",
-        "description": "Compute maximum affiliate/creator payout per conversion within allowable CAC.",
+        "description": "Compute maximum affiliate/creator payout per conversion within allowable CAC in any currency.",
         "inputSchema": {
             "type": "object",
-            "required": ["allowable_cac_usd"],
             "properties": {
+                "currency": {"type": "string", "default": "USD"},
+                "allowable_cac": {"type": "number"},
                 "allowable_cac_usd": {"type": "number"},
+                "paid_whitelisting_cpa": {"type": "number"},
                 "paid_whitelisting_cpa_usd": {"type": "number", "default": 0.0},
+                "creator_flat_fee": {"type": "number"},
                 "creator_flat_fee_usd": {"type": "number", "default": 0.0},
                 "expected_conversions": {"type": "number", "default": 10},
             },
@@ -83,17 +95,25 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "freecmo_blended_mer",
-        "description": "Compute Blended Marketing Efficiency Ratio (MER) separating organic, branded, and cold paid.",
+        "description": "Compute Blended Marketing Efficiency Ratio (MER) separating organic, branded, and cold paid in any currency.",
         "inputSchema": {
             "type": "object",
-            "required": ["total_revenue_usd", "total_marketing_spend_usd"],
             "properties": {
+                "currency": {"type": "string", "default": "USD"},
+                "total_revenue": {"type": "number"},
                 "total_revenue_usd": {"type": "number"},
-                "total_marketing_spend_usd": {"type": "number"},
-                "non_branded_organic_revenue_usd": {"type": "number"},
-                "branded_search_revenue_usd": {"type": "number"},
-                "paid_cold_revenue_usd": {"type": "number"},
-                "paid_cold_spend_usd": {"type": "number"},
+                "total_ad_spend": {"type": "number"},
+                "total_ad_spend_usd": {"type": "number"},
+                "branded_paid_revenue": {"type": "number"},
+                "branded_paid_revenue_usd": {"type": "number"},
+                "branded_paid_spend": {"type": "number"},
+                "branded_paid_spend_usd": {"type": "number"},
+                "non_branded_paid_revenue": {"type": "number"},
+                "non_branded_paid_revenue_usd": {"type": "number"},
+                "non_branded_paid_spend": {"type": "number"},
+                "non_branded_paid_spend_usd": {"type": "number"},
+                "organic_revenue": {"type": "number"},
+                "organic_revenue_usd": {"type": "number"},
             },
         },
     },
@@ -142,7 +162,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "freecmo_churn_and_runway",
-        "description": "Compute SaaS/SMB churn & NRR, 12-month J-curve cash runway trough, or referral k-factor & review targets.",
+        "description": "Compute SaaS/SMB churn & NRR, 12-month J-curve cash runway trough, or referral k-factor & review targets in any currency.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -151,21 +171,31 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "enum": ["churn_nrr", "cash_runway", "referral_loop"],
                     "default": "churn_nrr",
                 },
+                "currency": {"type": "string", "default": "USD"},
+                "starting_mrr": {"type": "number"},
                 "starting_mrr_usd": {"type": "number"},
                 "monthly_logo_churn_pct": {"type": "number"},
                 "monthly_revenue_churn_pct": {"type": "number"},
                 "monthly_expansion_pct": {"type": "number"},
                 "new_customers_per_month": {"type": "number"},
+                "available_cash": {"type": "number"},
                 "available_cash_usd": {"type": "number"},
+                "monthly_ad_spend": {"type": "number"},
                 "monthly_ad_spend_usd": {"type": "number"},
+                "allowable_cac": {"type": "number"},
                 "allowable_cac_usd": {"type": "number"},
+                "monthly_gross_profit_per_customer": {"type": "number"},
                 "monthly_gross_profit_per_customer_usd": {"type": "number"},
                 "horizon_months": {"type": "integer", "default": 12},
+                "fixed_marketing_ops": {"type": "number"},
                 "fixed_marketing_ops_usd": {"type": "number"},
+                "paid_cac": {"type": "number"},
                 "paid_cac_usd": {"type": "number"},
                 "referral_invite_rate": {"type": "number"},
                 "referral_conversion_rate": {"type": "number"},
+                "referrer_reward": {"type": "number"},
                 "referrer_reward_usd": {"type": "number"},
+                "friend_discount_cost": {"type": "number"},
                 "friend_discount_cost_usd": {"type": "number"},
                 "current_reviews": {"type": "number"},
                 "current_rating": {"type": "number"},
@@ -176,7 +206,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "freecmo_creative_fatigue",
-        "description": "Detect ad creative fatigue (frequency saturation + CTR decay / CPA inflation) or evaluate T-21..T+7 launch budget pacing.",
+        "description": "Detect ad creative fatigue (frequency saturation + CTR decay / CPA inflation) or evaluate T-21..T+7 launch budget pacing in any currency.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -185,14 +215,19 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "enum": ["fatigue", "launch_pacing"],
                     "default": "fatigue",
                 },
+                "currency": {"type": "string", "default": "USD"},
                 "creatives": {"type": "array", "items": {"type": "object"}},
                 "max_frequency": {"type": "number", "default": 3.2},
                 "ctr_drop_threshold_pct": {"type": "number", "default": 20.0},
                 "cpa_inflation_threshold_pct": {"type": "number", "default": 25.0},
+                "min_spend_floor": {"type": "number"},
+                "launch_budget": {"type": "number"},
                 "launch_budget_usd": {"type": "number"},
                 "days_elapsed": {"type": "number"},
                 "total_launch_days": {"type": "number"},
+                "spend_to_date": {"type": "number"},
                 "spend_to_date_usd": {"type": "number"},
+                "revenue_to_date": {"type": "number"},
                 "revenue_to_date_usd": {"type": "number"},
                 "gross_margin_pct": {"type": "number"},
                 "target_mer": {"type": "number", "default": 2.5},
@@ -210,6 +245,34 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 "primary_query": {"type": "string", "default": ""},
                 "content_format": {"type": "string", "enum": ["auto", "html", "markdown", "md"], "default": "auto"},
                 "robots_txt": {"type": "string"},
+            },
+        },
+    },
+    {
+        "name": "freecmo_offline_local_channel",
+        "description": "Compute local-currency unit economics or validate GSM-7 SMS, WhatsApp Business broadcast, community FM radio, print flyer, bulletin board, and 2G/3G payload readiness.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["economics", "readiness"],
+                    "default": "economics",
+                },
+                "currency": {"type": "string", "default": "USD"},
+                "channel": {"type": "string", "default": "whatsapp_broadcast"},
+                "recipients_or_reach": {"type": "number"},
+                "total_campaign_cost": {"type": "number"},
+                "total_campaign_cost_usd": {"type": "number"},
+                "response_or_redemption_rate_pct": {"type": "number"},
+                "aov": {"type": "number"},
+                "aov_usd": {"type": "number"},
+                "gross_margin_pct": {"type": "number"},
+                "allowable_cac": {"type": "number"},
+                "allowable_cac_usd": {"type": "number"},
+                "message_text": {"type": "string"},
+                "include_opt_out": {"type": "boolean", "default": True},
+                "html_payload_kb": {"type": "number"},
             },
         },
     },
@@ -293,6 +356,13 @@ def dispatch_tool_call(name: str, arguments: dict[str, Any], repo_root: pathlib.
             )
             content = target.read_text(encoding="utf-8")
         return audit_page_fanout_readiness(content=content, **args)
+    if name == "freecmo_offline_local_channel":
+        mode = str(args.pop("mode", "economics"))
+        if mode == "readiness":
+            return evaluate_low_bandwidth_readiness(**args)
+        if mode == "economics":
+            return compute_offline_channel_economics(**args)
+        raise ValueError(f"Unsupported freecmo_offline_local_channel mode: {mode!r}")
     if name == "freecmo_validate_creative_spec":
         spec = args.get("spec")
         if not isinstance(spec, dict):

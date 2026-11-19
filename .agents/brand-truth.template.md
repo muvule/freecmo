@@ -4,6 +4,7 @@ brand_name: "Your Brand"
 website_url: "https://example.com"
 repo_path: ""
 last_reviewed_by_composer: ""
+currency: "USD"
 monthly_budget_usd: 0
 allowable_cac_usd: 0
 gross_margin_pct: 0
@@ -13,11 +14,11 @@ target_payback_months: 3
 # Brand Truth & Strategy Lock
 
 > [!IMPORTANT]
-> Production workers (`ad-creative-angle-matrix`, `social-seo-repurposer`, `seo-geo-code-pr`, `google-ads-smb-audit`, `meta-ads-smb-audit`, `landing-page-cro-audit`, `email-deliverability-flows`) are **HARD-BLOCKED** while `status: draft_pending_review`. Review all `[STONE]` facts, ICPs, positioning, and disproof conditions, then change `status` to `locked`.
+> Production workers (`ad-creative-angle-matrix`, `social-seo-repurposer`, `offline-local-channels`, `seo-geo-code-pr`, `google-ads-smb-audit`, `meta-ads-smb-audit`, `landing-page-cro-audit`, `email-deliverability-flows`) are **HARD-BLOCKED** while `status: draft_pending_review`. Review all `[STONE]` facts, ICPs, positioning, and disproof conditions, then change `status` to `locked`.
 
 ## 1. `[STONE]` Verified Facts (Immutable Evidence Only)
-- **Product / Offer:** `[STONE]` <verbatim description + pricing from website/repo>
-- **Unit Economics:** `[STONE]` Gross Margin: `<unknown>`, Target Payback: `<unknown>`, Allowable CAC: `<unknown>`
+- **Product / Offer:** `[STONE]` <verbatim description + pricing from website/repo in local `currency` (`USD`, `KES`, `IDR`, `MXN`, etc.)>
+- **Unit Economics:** `[STONE]` Currency: `<USD|KES|IDR|MXN>`, Gross Margin: `<unknown>`, Target Payback: `<unknown>`, Allowable CAC: `<unknown>`
 - **Proof Points & Customer Wins:** `[STONE]` <only cited numbers, case studies, or customer quotes with source URLs/files>
 
 ## 2. `[OPINION]` Strategy, ICPs & Positioning

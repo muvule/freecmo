@@ -26,6 +26,7 @@
 - [launch-campaign-playbook](./skills/core/launch-campaign-playbook/SKILL.md): Orchestrate T-21 to T+7 product, seasonal, and promo launches with pacing and margin circuit breakers.
 - [local-seo-gbp-optimizer](./skills/search-organic/local-seo-gbp-optimizer/SKILL.md): Optimize Google Business Profile categories, LocalBusiness schema, and review velocity.
 - [meta-ads-smb-audit](./skills/social/meta-ads-smb-audit/SKILL.md): Audit Meta Ads spend floors, Advantage+ defaults, CAPI deduplication, and 14-day stop-losses.
+- [offline-local-channels](./skills/social/offline-local-channels/SKILL.md): Plan & write currency-aware WhatsApp broadcasts, GSM-7 SMS, community FM radio spots, flyers, and bulletin boards for low-connectivity & 7B-local workflows.
 - [review-referral-flywheel](./skills/lifecycle-cro/review-referral-flywheel/SKILL.md): Engineer compliant customer review velocity and CAC-capped double-sided referral loops.
 - [search-term-negative-miner](./skills/search-paid/search-term-negative-miner/SKILL.md): Mine Google Ads search term reports via n-gram clustering to cut zero-conversion waste spend.
 - [seo-geo-code-pr](./skills/search-organic/seo-geo-code-pr/SKILL.md): Stage isolated git branch PRs adding canonicals, meta tags, FAQPage JSON-LD, and AI robots.txt.

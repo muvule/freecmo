@@ -13,13 +13,14 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from calculators import safe_parse_yaml, validate_json_schema
+from calculators import format_money, normalize_currency, resolve_amount, safe_parse_yaml, validate_json_schema
 from calculators.budget_gate import evaluate_budget_gate
 from calculators.creative_fatigue import detect_creative_fatigue
 from calculators.experiment_math import evaluate_disproof_condition
 from calculators.mer import allocate_acquisition_vs_retention, evaluate_stop_losses
 from calculators.runway_churn import compute_churn_and_nrr, simulate_cash_flow_runway
 from connectors.approval_gate import check_strategy_lock
+from scripts.validate_skills import split_frontmatter
 
 
 PRODUCTION_SKILLS = {
@@ -29,6 +30,7 @@ PRODUCTION_SKILLS = {
     "ad-creative-angle-matrix",
     "display-native-ad-studio",
     "social-seo-repurposer",
+    "offline-local-channels",
     "editorial-blog-linkedin-writer",
     "comms-press-release-writer",
     "competitor-battlecard-pricing",
@@ -42,6 +44,17 @@ PRODUCTION_SKILLS = {
     "email-deliverability-flows",
     "community-pain-radar",
 }
+
+
+def _resolve_brand_currency(state: dict[str, Any], brand_truth_path: pathlib.Path) -> str:
+    raw = state.get("currency")
+    if not raw and brand_truth_path.exists():
+        try:
+            fm, _ = split_frontmatter(brand_truth_path.read_text(encoding="utf-8"))
+            raw = fm.get("currency")
+        except Exception:
+            raw = None
+    return normalize_currency(str(raw) if raw else "USD")
 
 
 def load_killed_assumptions(brand_truth_path: pathlib.Path) -> list[str]:
@@ -139,6 +152,7 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
 
     lock_status = check_strategy_lock(brand_truth_path)
     normalized_lock = "locked" if lock_status == "locked" else "draft_pending_review"
+    cur = _resolve_brand_currency(state, brand_truth_path)
     newly_killed = process_experiment_ledger(ledger_path, brand_truth_path)
     killed_markers = load_killed_assumptions(brand_truth_path)
 
@@ -199,13 +213,14 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                 "recommended_pause": True,
             }
         )
+        budget_impact = resolve_amount(state.get("monthly_budget"), state.get("monthly_budget_usd")) or 0.0
         decisions.append(
             {
                 "rank": len(decisions) + 1,
                 "priority": "P0",
                 "decision_title": "Repair conversion tracking before any paid spend",
                 "rationale": "Tracking health check failed. Scaling paid channels with broken attribution burns budget blindly.",
-                "dollar_impact_usd": float(state.get("monthly_budget_usd", 0.0)),
+                "dollar_impact_usd": float(budget_impact),
                 "disproof_condition": "conversion_events == 0 after 24h post-fix QA check",
                 "source_receipts": [state.get("tracking_receipt", "analytics/tracking_health")],
             }
@@ -243,7 +258,9 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
 
     # 2b. Leaky-Bucket Churn & J-Curve Working-Capital Runway Circuit Breakers
     if isinstance(state.get("churn_metrics"), dict):
-        churn_res = compute_churn_and_nrr(**state["churn_metrics"])
+        churn_kwargs = dict(state["churn_metrics"])
+        churn_kwargs.setdefault("currency", cur)
+        churn_res = compute_churn_and_nrr(**churn_kwargs)
         if churn_res.get("status") == "ok" and churn_res.get("leaky_bucket_alert") is True:
             circuit_breakers.append(
                 {
@@ -257,9 +274,12 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                 }
             )
             if len(decisions) < 5:
+                mrr_base = resolve_amount(
+                    churn_kwargs.get("starting_mrr"),
+                    churn_kwargs.get("starting_mrr_usd"),
+                ) or 0.0
                 mrr_at_risk = round(
-                    float(state["churn_metrics"].get("starting_mrr_usd", 0.0))
-                    * (float(state["churn_metrics"].get("monthly_revenue_churn_pct", 0.0)) / 100.0),
+                    mrr_base * (float(churn_kwargs.get("monthly_revenue_churn_pct", 0.0)) / 100.0),
                     2,
                 )
                 decisions.append(
@@ -296,15 +316,19 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                 )
 
     if isinstance(state.get("cash_runway"), dict):
-        runway_res = simulate_cash_flow_runway(**state["cash_runway"])
+        runway_kwargs = dict(state["cash_runway"])
+        runway_kwargs.setdefault("currency", cur)
+        runway_res = simulate_cash_flow_runway(**runway_kwargs)
         if runway_res.get("status") == "ok" and runway_res.get("runway_safe") is False:
+            trough_fmt = runway_res.get("max_cash_trough_formatted") or f"${runway_res['max_cash_trough_usd']:.0f}"
+            min_bal_fmt = runway_res.get("min_cash_balance_formatted") or f"${runway_res['min_cash_balance_usd']:.0f}"
             circuit_breakers.append(
                 {
                     "alert_id": "cb-cash-runway-trough",
                     "severity": "critical",
                     "message": (
-                        f"J-curve cash trough (${runway_res['max_cash_trough_usd']:.0f}) leaves minimum cash "
-                        f"${runway_res['min_cash_balance_usd']:.0f} below 1-month operating buffer."
+                        f"J-curve cash trough ({trough_fmt}) leaves minimum cash "
+                        f"{min_bal_fmt} below 1-month operating buffer."
                     ),
                     "recommended_pause": True,
                 }
@@ -316,8 +340,8 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                         "priority": "P0",
                         "decision_title": "Throttle paid ad spend to protect working-capital cash runway",
                         "rationale": (
-                            f"Upfront CAC creates a ${runway_res['max_cash_trough_usd']:.0f} cash trough before payback "
-                            f"(min balance ${runway_res['min_cash_balance_usd']:.0f}). Cap spend or shift to annual prepay."
+                            f"Upfront CAC creates a {trough_fmt} cash trough before payback "
+                            f"(min balance {min_bal_fmt}). Cap spend or shift to annual prepay."
                         ),
                         "dollar_impact_usd": float(runway_res["max_cash_trough_usd"]),
                         "disproof_condition": "min_cash_balance_usd < monthly_outflow_usd under revised spend cap",
@@ -327,12 +351,15 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
 
     # 3. Acquisition vs. Retention Reallocation
     if state.get("cohort_segments"):
+        pool_amt = resolve_amount(state.get("reallocation_pool"), state.get("reallocation_pool_usd")) or 0.0
         alloc = allocate_acquisition_vs_retention(
             state["cohort_segments"],
-            reallocation_pool_usd=state.get("reallocation_pool_usd", 0.0),
+            reallocation_pool=pool_amt,
+            currency=cur,
         )
         rec = alloc.get("recommendation")
         if rec and len(decisions) < 5:
+            shift_fmt = rec.get("shift_formatted") or format_money(rec["shift_usd"], cur)
             segment_shifts.append(
                 {
                     "from_segment": rec["from_segment"],
@@ -345,7 +372,7 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                 {
                     "rank": len(decisions) + 1,
                     "priority": "P0",
-                    "decision_title": f"Shift ${rec['shift_usd']:.0f} from {rec['from_segment']} to {rec['to_segment']}",
+                    "decision_title": f"Shift {shift_fmt} from {rec['from_segment']} to {rec['to_segment']}",
                     "rationale": rec["summary"],
                     "dollar_impact_usd": rec["shift_usd"],
                     "disproof_condition": "retention_segment_incremental_roas < 2.0 after 14 days",
@@ -380,7 +407,7 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
             and overlap.get("competitor_impression_share_pct", 100) < max_comp_is
             and len(decisions) < 5
         ):
-            saved = float(overlap.get("monthly_paid_spend_usd", 0.0))
+            saved = resolve_amount(overlap.get("monthly_paid_spend"), overlap.get("monthly_paid_spend_usd")) or 0.0
             decisions.append(
                 {
                     "rank": len(decisions) + 1,
@@ -388,7 +415,7 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                     "decision_title": f"Suppress cannibalizing paid term '{overlap['query']}'",
                     "rationale": (
                         f"Organic ranks #{overlap['organic_position']} with only "
-                        f"{overlap['competitor_impression_share_pct']}% competitor impression share; save ${saved:.0f}/mo."
+                        f"{overlap['competitor_impression_share_pct']}% competitor impression share; save {format_money(saved, cur)}/mo."
                     ),
                     "dollar_impact_usd": saved,
                     "disproof_condition": "total_blended_conversions_on_term drops > 15% after 14 days",
@@ -398,12 +425,12 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
 
     # 5. Paid Winners / GEO Entity Gaps / Pain Clusters -> SEO/GEO Code PR
     min_paid_conv = float(org_paid.get("paid_to_seo_min_conversions", 3))
-    allowable_cac = float(state.get("allowable_cac_usd", 100.0))
+    allowable_cac = resolve_amount(state.get("allowable_cac"), state.get("allowable_cac_usd")) or 100.0
     seo_candidates = [
         c
         for c in state.get("seo_geo_opportunities", [])
         if (
-            (c.get("paid_conversions", 0) >= min_paid_conv and c.get("paid_cpa_usd", 9999) <= allowable_cac)
+            (c.get("paid_conversions", 0) >= min_paid_conv and (resolve_amount(c.get("paid_cpa"), c.get("paid_cpa_usd")) or 9999) <= allowable_cac)
             or c.get("geo_citation_score", 10) < 3
             or c.get("pain_mentions", 0) >= 3
         )
@@ -411,13 +438,14 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
     ]
     if seo_candidates and len(decisions) < 5:
         top = seo_candidates[0]
+        est_val = resolve_amount(top.get("estimated_monthly_value"), top.get("estimated_monthly_value_usd")) or 250.0
         decisions.append(
             {
                 "rank": len(decisions) + 1,
                 "priority": "P1",
                 "decision_title": f"Stage SEO/GEO Code PR for '{top['topic']}'",
                 "rationale": "High-intent paid/pain/entity gap qualifies for answer-first FAQPage & comparison schema PR.",
-                "dollar_impact_usd": float(top.get("estimated_monthly_value_usd", 250.0)),
+                "dollar_impact_usd": float(est_val),
                 "disproof_condition": "organic_impressions_increase < 10% and geo_citations == 0 after 28 days",
                 "source_receipts": [top.get("receipt", "data/radar.db")],
             }
@@ -443,7 +471,7 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
 
     # 5b. Ad Creative Fatigue Detection -> 0-3s Hook Rotation
     if isinstance(state.get("ad_creatives"), list) and state.get("ad_creatives") and len(decisions) < 5:
-        fatigue_res = detect_creative_fatigue(state["ad_creatives"])
+        fatigue_res = detect_creative_fatigue(state["ad_creatives"], currency=cur)
         if fatigue_res.get("status") == "ok" and fatigue_res.get("fatigued_count", 0) > 0:
             fatigued_list = fatigue_res["fatigued_creatives"]
             fatigued_spend = round(sum(float(x.get("spend_usd", 0.0)) for x in fatigued_list), 2)
@@ -485,6 +513,7 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
     min_mult = float(org_paid.get("social_to_paid_min_median_multiplier", 2.0))
     for idx, post in enumerate(state.get("organic_social_posts", []), start=1):
         if post.get("save_or_watch_multiplier", 0.0) >= min_mult and len(decisions) < 5:
+            budget_amt = resolve_amount(state.get("monthly_budget"), state.get("monthly_budget_usd")) or 0.0
             gate = evaluate_budget_gate(
                 channel="paid_social",
                 tracking_verified=state.get("tracking_verified", False),
@@ -492,16 +521,19 @@ def generate_next_actions(state: dict[str, Any], repo_root: pathlib.Path = REPO_
                 payback_months=state.get("payback_months"),
                 max_payback_months=state.get("max_payback_months", 3.0),
                 monthly_conversions=state.get("monthly_conversions", 0),
-                monthly_budget_usd=state.get("monthly_budget_usd", 0),
+                monthly_budget=budget_amt,
+                currency=cur,
+                min_paid_budget=state.get("min_paid_budget"),
             )
             if gate.get("unlocked"):
+                test_amt = resolve_amount(post.get("test_budget"), post.get("test_budget_usd")) or 100.0
                 decisions.append(
                     {
                         "rank": len(decisions) + 1,
                         "priority": "P2",
                         "decision_title": f"Seed PAUSED Spark Ad from top organic post {post['post_id']}",
                         "rationale": f"Organic winner beat 30d median by {post['save_or_watch_multiplier']}x; stage PAUSED Meta test.",
-                        "dollar_impact_usd": float(post.get("test_budget_usd", 100.0)),
+                        "dollar_impact_usd": float(test_amt),
                         "disproof_condition": "ctr < 0.008 after 2500 impressions OR conversions == 0 after 2.0x allowable_cac_usd spend",
                         "source_receipts": [post.get("receipt", "social_analytics_export")],
                     }

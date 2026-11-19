@@ -43,7 +43,7 @@ python3 scripts/setup_harness.py --host cursor --write-workspace-cursor
 2. Copy the `freecmo-core` block from `dist/hosts/claude_desktop_and_mcp_config.json` into your `claude_desktop_config.json`:
    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-3. Restart Claude Desktop. Claude now has live access to `freecmo_unit_economics`, `freecmo_promo_breakeven`, `freecmo_creator_commission_cap`, `freecmo_blended_mer`, `freecmo_churn_and_runway`, `freecmo_creative_fatigue`, `freecmo_ai_search_fanout_audit`, `freecmo_utm_builder`, `freecmo_sync_platforms`, and `freecmo_weekly_brief`.
+3. Restart Claude Desktop. Claude now has live access to `freecmo_unit_economics`, `freecmo_promo_breakeven`, `freecmo_creator_commission_cap`, `freecmo_blended_mer`, `freecmo_churn_and_runway`, `freecmo_creative_fatigue`, `freecmo_ai_search_fanout_audit`, `freecmo_offline_local_channel`, `freecmo_utm_builder`, `freecmo_sync_platforms`, and `freecmo_weekly_brief`.
 
 ### Claude Web (`claude.ai` Projects)
 1. Run `python3 scripts/setup_harness.py --host claude-web`.
@@ -90,24 +90,25 @@ python3 scripts/cmo_runner.py run-skill \
   --brief "Audit hero message match, CTA clarity, and trust signals"
 ```
 
-### Option B — 100% Local Machine (`Ollama`, `LM Studio`, `vLLM`, `llama.cpp`)
-1. Install [Ollama](https://ollama.com) and pull a capable local model:
+### Option B — 100% Local Machine (`Ollama`, `LM Studio`, `vLLM`, `llama.cpp`) & Low-RAM 7B Offline Pack
+1. Install [Ollama](https://ollama.com) and pull a capable local model (`qwen2.5:7b` runs cleanly on 8 GB laptops with `$0` cloud fees):
    ```bash
-   ollama pull qwen2.5:14b
    ollama pull qwen2.5:7b
+   # Optional on 16 GB+ machines:
+   ollama pull qwen2.5:14b
    ```
-2. Copy the local preset to `.env`:
+2. Copy either the standard preset or the **7B offline preset** (optionally activating the `local-entrepreneur` 16-skill profile):
    ```bash
-   python3 scripts/setup_harness.py --host local-llm
-   cp dist/hosts/env.local-llm.example .env
+   python3 scripts/setup_harness.py --host local-llm --profile local-entrepreneur
+   cp dist/hosts/env.local-7b-offline.example .env   # or env.local-llm.example for 14b
    ```
    *(Using **LM Studio** instead? Set `CMO_LLM_PROVIDER=lmstudio` and `LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1` in `.env`.)*
-3. Run FreeCMO from your terminal:
+3. Run FreeCMO in any local currency (`KES`, `IDR`, `MXN`, `NGN`, `INR`, `USD`, etc.) without converting to USD:
    ```bash
-   python3 scripts/cmo_runner.py status
-   python3 scripts/cmo_runner.py init --brand-name "NordicDesk" --website-url "https://example.com" --aov-usd 140 --gross-margin-pct 70
+   python3 scripts/cmo_runner.py status --provider ollama-7b
+   python3 scripts/cmo_runner.py init --brand-name "JuaKazi Solar" --website-url "https://example.com" --currency KES --aov 1800 --gross-margin-pct 55 --monthly-budget 15000
    # After reviewing .agents/brand-truth.md and setting status: locked:
-   python3 scripts/cmo_runner.py run-skill --skill editorial-blog-linkedin-writer --brief "Write an answer-first SEO blog post + LinkedIn edition on standing desk ergonomics"
+   python3 scripts/cmo_runner.py run-skill --provider ollama-7b --skill offline-local-channels --brief "Draft a WhatsApp broadcast, GSM-7 SMS alert, and 30s community radio spot for our Nakuru market promo"
    ```
 
 ### Option C — OpenRouter, DeepSeek, Groq, or Together AI (~85–95% Lower Cost)

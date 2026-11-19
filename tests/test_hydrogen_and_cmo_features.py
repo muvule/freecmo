@@ -376,7 +376,7 @@ class TestGeminiHydrogenAndSmbCmoFeatures(unittest.TestCase):
             self.assertTrue(any("env.gemini-hydrogen.example" in f for f in hosts["generated_files"]))
             pkg_res = build_artifacts(repo_root=ws, check_only=False, profile="retention-launch")
             self.assertEqual(pkg_res["active_runtime_skills"], 16)
-            self.assertEqual(pkg_res["total_source_skills"], 25)
+            self.assertEqual(pkg_res["total_source_skills"], 26)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,15 @@ _REPO_ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from calculators import ok_result, to_float, unknown_result
+from calculators import (
+    format_money,
+    normalize_currency,
+    ok_result,
+    resolve_amount,
+    round_money,
+    to_float,
+    unknown_result,
+)
 
 
 _STOPWORDS = {"a", "an", "and", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with"}
@@ -22,32 +30,36 @@ _STOPWORDS = {"a", "an", "and", "at", "by", "for", "from", "in", "of", "on", "or
 
 def mine_ngram_waste(
     search_terms: list[dict[str, Any]],
-    allowable_cac_usd: Any,
+    allowable_cac_usd: Any = None,
     min_waste_spend_usd: Any = None,
     min_clicks: int = 10,
     max_ngram: int = 2,
+    allowable_cac: Any = None,
+    min_waste_spend: Any = None,
+    currency: str = "USD",
 ) -> dict[str, Any]:
-    """Cluster zero-conversion or over-CAC spend by 1-gram and 2-gram tokens."""
+    """Cluster zero-conversion or over-CAC spend by 1-gram and 2-gram tokens in any currency."""
+    cur = normalize_currency(currency)
     n_cap = int(max_ngram)
     if n_cap < 1 or n_cap > 5:
         raise ValueError("max_ngram must be between 1 and 5")
-    cac = to_float(allowable_cac_usd)
-    trace = "aggregate spend/clicks/conversions per 1..max_ngram; flag ngrams with conversions==0 and spend>=min_waste_spend_usd"
+    cac = resolve_amount(allowable_cac, allowable_cac_usd)
+    trace = "aggregate spend/clicks/conversions per 1..max_ngram; flag ngrams with conversions==0 and spend>=min_waste_spend"
     if not search_terms or cac is None or cac <= 0:
-        return unknown_result(["search_terms", "allowable_cac_usd(>0)"], trace)
+        return unknown_result(["search_terms", "allowable_cac_usd(>0)" if cur == "USD" else "allowable_cac(>0)"], trace, {"currency": cur})
 
-    waste_floor = to_float(min_waste_spend_usd)
+    waste_floor = resolve_amount(min_waste_spend, min_waste_spend_usd)
     if waste_floor is None:
-        waste_floor = round(cac * 1.0, 2)
+        waste_floor = round_money(cac * 1.0, cur)
 
     clusters: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"ngram": "", "n": 1, "spend_usd": 0.0, "clicks": 0, "conversions": 0, "terms_count": 0}
+        lambda: {"ngram": "", "n": 1, "spend": 0.0, "spend_usd": 0.0, "clicks": 0, "conversions": 0, "terms_count": 0}
     )
     total_waste_spend = 0.0
 
     for row in search_terms:
         term = str(row.get("search_term", "")).strip().lower()
-        spend = to_float(row.get("spend_usd"))
+        spend = resolve_amount(row.get("spend"), row.get("spend_usd"))
         clicks = to_float(row.get("clicks"))
         convs = to_float(row.get("conversions"))
         if not term or spend is None or clicks is None or convs is None:
@@ -57,7 +69,7 @@ def mine_ngram_waste(
 
         tokens = [t for t in re.findall(r"[a-z0-9]+", term) if t not in _STOPWORDS]
         seen_in_row: set[str] = set()
-        for n in range(1, max_ngram + 1):
+        for n in range(1, n_cap + 1):
             for i in range(len(tokens) - n + 1):
                 ng = " ".join(tokens[i : i + n])
                 if ng in seen_in_row:
@@ -67,6 +79,7 @@ def mine_ngram_waste(
                 c["ngram"] = ng
                 c["n"] = n
                 c["spend_usd"] = round(c["spend_usd"] + spend, 2)
+                c["spend"] = round_money(c["spend_usd"], cur)
                 c["clicks"] += int(clicks)
                 c["conversions"] += int(convs)
                 c["terms_count"] += 1
@@ -80,7 +93,12 @@ def mine_ngram_waste(
     flagged.sort(key=lambda x: (-x["spend_usd"], -x["clicks"], -x["n"], x["ngram"]))
     return ok_result(
         {
+            "currency": cur,
+            "waste_floor": waste_floor,
+            "waste_floor_formatted": format_money(waste_floor, cur),
             "waste_floor_usd": waste_floor,
+            "total_zero_conv_spend": round_money(total_waste_spend, cur),
+            "total_zero_conv_spend_formatted": format_money(total_waste_spend, cur),
             "total_zero_conv_spend_usd": round(total_waste_spend, 2),
             "flagged_ngrams": flagged[:25],
             "flagged_count": len(flagged),

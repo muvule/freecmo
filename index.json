@@ -253,6 +253,20 @@
     },
     {
       "calculators": [
+        "local_channels",
+        "cac_ltv"
+      ],
+      "category": "social",
+      "description": "Plan & write currency-aware WhatsApp broadcasts, GSM-7 SMS, community FM radio spots, flyers, and bulletin boards for low-connectivity & 7B-local workflows.",
+      "last_updated": "2026-11-18",
+      "name": "offline-local-channels",
+      "package": "social",
+      "source_path": "skills/social/offline-local-channels/SKILL.md",
+      "status": "active",
+      "tier": 2
+    },
+    {
+      "calculators": [
         "runway_churn"
       ],
       "category": "lifecycle-cro",
@@ -346,5 +360,5 @@
       "tier": 1
     }
   ],
-  "total_source_skills": 25
+  "total_source_skills": 26
 }

@@ -7,18 +7,19 @@
 
 **An attention-budgeted, deterministic AI Marketing & Comms Department for solo founders and lean SMBs.**
 
-Works in **Antigravity** · **Gemini 4 Hydrogen** (`$0` AI Studio Free Tier) · **Claude Code & Desktop** · **ChatGPT** · **Codex** · **Cursor** · **Local Ollama / LM Studio** · **OpenRouter**  
-Zero external Python dependencies (`Python 3.11+` stdlib) · Built-in Stdio MCP Server · MIT Licensed
+Works in **Antigravity** · **Gemini 4 Hydrogen** (`$0` AI Studio Free Tier) · **Claude Code & Desktop** · **ChatGPT** · **Codex** · **Cursor** · **Local Ollama (7B/14B) / LM Studio** · **OpenRouter**  
+Zero external Python dependencies (`Python 3.11+` stdlib) · Built-in Stdio MCP Server · Currency-Aware (`KES`, `IDR`, `MXN`, `USD`, etc.) · MIT Licensed
 
-[Quick Start](#quick-start) &nbsp;·&nbsp; [User Journeys](#user-journeys) &nbsp;·&nbsp; [Harness & Local LLM Setup](./docs/HARNESS_SETUP.md) &nbsp;·&nbsp; [Safeguards](#built-in-safeguards) &nbsp;·&nbsp; [25-Skill Library](#25-skill-library)
+[Quick Start](#quick-start) &nbsp;·&nbsp; [User Journeys](#user-journeys) &nbsp;·&nbsp; [Harness & Local LLM Setup](./docs/HARNESS_SETUP.md) &nbsp;·&nbsp; [Safeguards](#built-in-safeguards) &nbsp;·&nbsp; [26-Skill Library](#26-skill-library)
 
 </div>
 
 ---
 
-Most AI marketing tools are noisy prompt dumps that invent metrics and bury you in 50-page docs. **FreeCMO** takes the opposite approach: calm, verifiable execution across ads, search, social, editorial, retention, and comms.
+Most AI marketing tools are noisy prompt dumps that invent metrics and bury you in 50-page docs. **FreeCMO** takes the opposite approach: calm, verifiable execution across ads, search, social, offline local channels, editorial, retention, and comms.
 
-- **Automated telemetry & cash-safe math, zero guesswork** — Pulls read-only performance directly from **Google Ads, Meta (Instagram & Facebook), LinkedIn, TikTok, GA4, Search Console, Stripe, and Shopify** (or offline CSVs) and computes CAC payback, **J-curve working-capital runway**, **logo churn & NRR**, **blended MER**, **ad creative fatigue**, promo break-even, referral `k`-factor, and creator caps in pure Python. Missing numbers stay `unknown`.
+- **Automated telemetry & cash-safe math, zero guesswork** — Pulls read-only performance directly from **Google Ads, Meta (Instagram & Facebook), LinkedIn, TikTok, GA4, Search Console, Stripe, and Shopify** (or offline CSVs) and computes CAC payback, **J-curve working-capital runway**, **logo churn & NRR**, **blended MER**, **ad creative fatigue**, promo break-even, referral `k`-factor, and creator caps in **any ISO-4217 currency** in pure Python. Missing numbers stay `unknown`.
+- **Local-first, offline & low-connectivity entrepreneurship** — Works cleanly offline on a **local 7B Ollama model (`qwen2.5:7b`)** with `$0` cloud fees, validates **GSM-7 vs. UCS-2 SMS segment limits**, **WhatsApp Business broadcasts**, **community FM radio scripts**, **print flyers / bulletin boards**, and `<= 150 KB` 2G/3G order pages via `local_channels.py` and the `local-entrepreneur` runtime profile.
 - **Strategy before production** — Ads, blog posts, press releases, and code PRs stay hard-blocked until you review and lock `.agents/brand-truth.md`.
 - **10 minutes a week** — Synthesizes cross-channel outcomes into **one batched Weekly Composer's Brief (max 5 ranked decisions)**, surfacing Circuit Breaker alerts only when tracking breaks, churn spikes, cash troughs threaten runway, or spend blows up.
 
@@ -124,7 +125,7 @@ python3 scripts/setup_harness.py --host all
 | **Claude Code & Claude Desktop** | Native `CLAUDE.md`, `.claude-plugin/plugin.json`, and zero-dependency stdio MCP (`freecmo-core`). |
 | **ChatGPT & Claude Web Projects** | `setup_harness.py` exports `<8,000`-char Custom GPT / Project Instructions + a single Knowledge bundle. |
 | **OpenAI Codex & Cursor** | Native `AGENTS.md`, `.codex-plugin/plugin.json`, `.cursor/rules/freecmo.mdc`, and MCP tools. |
-| **Local LLMs (`$0` Offline)** | `cmo_runner.py` routes directly to **Ollama** (`127.0.0.1:11434`), **LM Studio** (`127.0.0.1:1234`), or **vLLM**. |
+| **Local LLMs (`$0` Offline)** | `cmo_runner.py` routes directly to **Ollama** (`127.0.0.1:11434`, including `ollama-7b` on 8 GB laptops), **LM Studio** (`127.0.0.1:1234`), or **vLLM**. |
 | **OpenRouter / DeepSeek / Groq** | Tiered routing sends worker tasks to low-cost models (`deepseek-chat`, `llama-3.3-70b`), multimodal creative to `google/gemini-4-hydrogen`, and orchestration to reasoning models. |
 
 ---
@@ -135,7 +136,8 @@ python3 scripts/setup_harness.py --host all
 |---|---|
 | **Invented benchmarks & hallucinated ROI** | Calculators propagate `"unknown"` on missing inputs; Validator blocks unreceipted numbers. |
 | **Profitable payback that bankrupts cash flow** | `runway_churn.py` simulates month-by-month J-curve working-capital troughs and blocks scaling into a leaky bucket (`churn >= 8%/mo`) or cash crunch. |
-| **Margin-destroying discounts, promos & referrals** | `cac_ltv.py` & `runway_churn.py` block negative-margin promos and cap creator payouts + double-sided referral rewards within allowable CAC. |
+| **Margin-destroying discounts, promos & referrals** | `cac_ltv.py` & `runway_churn.py` block negative-margin promos and cap creator payouts + double-sided referral rewards within allowable CAC in any currency. |
+| **Silent SMS encoding & low-bandwidth cost traps** | `local_channels.py` detects curly quotes/emojis switching SMS from GSM-7 (`160` chars) to UCS-2 (`70` chars) and guards 2G web order sheets (`<=150 KB`). |
 | **Burning cash on broken tracking, fatigued ads or slow pages** | `budget_gate.py` locks scaling on unverified tracking or slow pages; `creative_fatigue.py` flags frequency-saturated ads (`>=3.2` freq + CTR decay) for hook rotation. |
 | **Silent ad-spend blowups** | Google Ads defaults to `validate_only=True`; Meta/IG/FB defaults to `PAUSED`; conditional stop-losses fire Circuit Breakers. |
 | **Raw PII leaks or VIP outreach** | `ad_platform_sync.py` & `identity_resolver.py` SHA-256 hash customer emails locally; `guardrails.yaml` blocks VIP domains/contacts. |
@@ -152,26 +154,26 @@ cd freecmo
 # 1. Run automated platform sync + Weekly Composer's Brief (try offline with --demo-fixture)
 python3 scripts/sync_platforms.py --demo-fixture --emit-brief
 
-# 2. Configure your preferred AI host (Gemini Hydrogen, Claude, ChatGPT, Antigravity, Cursor, Codex, Ollama, OpenRouter)
+# 2. Configure your preferred AI host (Gemini Hydrogen, Claude, ChatGPT, Antigravity, Cursor, Codex, Ollama 7B/14B, OpenRouter)
 python3 scripts/setup_harness.py --host all
 
-# 3. Verify all 25 skills, 50 live-recomputed worked examples, and unit tests
+# 3. Verify all 26 skills, live-recomputed worked examples, and unit tests
 python3 scripts/validate_skills.py
 python3 -m unittest discover -s tests -v
 ```
 
 ---
 
-## 25-Skill Library
+## 26-Skill Library
 
-All 25 canonical skills in `skills/` compile into channel packages (`packages/{core,search,social,content,lifecycle}`) and selectable **16-skill runtime profiles** (`default`, `content-comms`, `paid-media`, `retention-launch`) so active context stays tiny.
+All 26 canonical skills in `skills/` compile into channel packages (`packages/{core,search,social,content,lifecycle}`) and selectable **16-skill runtime profiles** (`default`, `local-entrepreneur`, `content-comms`, `paid-media`, `retention-launch`) so active context stays tiny.
 
 | Domain | Skills |
 |---|---|
 | **Core, Strategy, Launches & Pricing** | `cmo-init` · `unit-economics-floors` · `weekly-cmo-brief` · `launch-campaign-playbook` · `competitor-battlecard-pricing` |
 | **Analytics & Attribution** | `blended-mer-reconciler` · `tracking-health-audit` |
 | **Editorial & Comms PR** | `editorial-blog-linkedin-writer` · `comms-press-release-writer` |
-| **Social, Display & Native Ads** | `meta-ads-smb-audit` · `ad-creative-angle-matrix` · `display-native-ad-studio` · `social-seo-repurposer` · `community-pain-radar` |
+| **Social, Offline Local, Display & Native** | `offline-local-channels` · `meta-ads-smb-audit` · `ad-creative-angle-matrix` · `display-native-ad-studio` · `social-seo-repurposer` · `community-pain-radar` |
 | **Paid Search** | `google-ads-smb-audit` · `search-term-negative-miner` |
 | **Organic Search & AI Mode GEO** | `gsc-query-drift-triage` · `local-seo-gbp-optimizer` · `aeo-entity-readiness` · `seo-geo-code-pr` |
 | **Retention, Referrals, Creators & CRO** | `churn-winback-engine` · `review-referral-flywheel` · `landing-page-cro-audit` · `email-deliverability-flows` · `creator-affiliate-partnerships` |
@@ -185,10 +187,10 @@ freecmo/
 ├── docs/HARNESS_SETUP.md               # Step-by-step setup for Gemini Hydrogen, IDEs, Desktop, Web, Local LLMs & OpenRouter
 ├── .agents/                            # Brand truth template, Visual DNA, instincts.md, guardrails.yaml, active skills (<=16)
 ├── assets/                             # Minimalist Scandinavian SVG logo & system diagrams
-├── calculators/                        # Pure Python 3.11+ math (cac_ltv, runway_churn, creative_fatigue, fanout_audit, mer, experiment_math, ngram_waste, budget_gate)
+├── calculators/                        # Pure Python 3.11+ math (cac_ltv, local_channels, runway_churn, creative_fatigue, fanout_audit, mer, experiment_math, ngram_waste, budget_gate)
 ├── connectors/                         # ad_platform_sync, llm_router, utm_governance, csv_normalizer, identity_resolver, radar_store, approval_gate
 ├── schemas/                            # Draft 2020-12 JSON Schemas (subtask_spec, worker_output, storyboard, creative_asset_spec, experiment, composers_brief)
-├── skills/ & packages/                 # 25 source SKILL.md files and compiled channel packages
+├── skills/ & packages/                 # 26 source SKILL.md files and compiled channel packages
 ├── scripts/                            # sync_platforms.py, mcp_server.py, setup_harness.py, cmo_runner.py, next_action.py, geo_benchmark.py, validate_skills.py
 └── tests/                              # Stdlib unittest suite covering math, platform sync, Gemini Hydrogen routing, MCP, schemas, and security invariants
 ```

@@ -75,6 +75,12 @@ PRIMARY_SOURCE_DOMAINS = {
     "platform.openai.com",
     "docs.anthropic.com",
     "ai.google.dev",
+    "business.whatsapp.com",
+    "faq.whatsapp.com",
+    "www.3gpp.org",
+    "www.fcc.gov",
+    "www.gsma.com",
+    "web.dev",
 }
 
 _URL_RE = re.compile(r"https?://[^\s)\]>\"']+")

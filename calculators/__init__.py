@@ -72,6 +72,96 @@ def ok_result(
 
 
 # ---------------------------------------------------------------------------
+# Currency-Aware Formatting & Local-Unit Normalization (ISO 4217)
+# ---------------------------------------------------------------------------
+
+CURRENCY_SPECS: dict[str, dict[str, Any]] = {
+    "USD": {"symbol": "$", "decimals": 2, "per_usd_ref": 1.0},
+    "EUR": {"symbol": "€", "decimals": 2, "per_usd_ref": 0.92},
+    "GBP": {"symbol": "£", "decimals": 2, "per_usd_ref": 0.79},
+    "CAD": {"symbol": "CA$", "decimals": 2, "per_usd_ref": 1.38},
+    "AUD": {"symbol": "A$", "decimals": 2, "per_usd_ref": 1.52},
+    "KES": {"symbol": "KSh", "decimals": 2, "per_usd_ref": 129.0},
+    "IDR": {"symbol": "Rp", "decimals": 0, "per_usd_ref": 15700.0},
+    "MXN": {"symbol": "MX$", "decimals": 2, "per_usd_ref": 20.0},
+    "NGN": {"symbol": "₦", "decimals": 2, "per_usd_ref": 1600.0},
+    "INR": {"symbol": "₹", "decimals": 2, "per_usd_ref": 84.0},
+    "BRL": {"symbol": "R$", "decimals": 2, "per_usd_ref": 5.7},
+    "ZAR": {"symbol": "R", "decimals": 2, "per_usd_ref": 18.0},
+    "PHP": {"symbol": "₱", "decimals": 2, "per_usd_ref": 58.0},
+    "VND": {"symbol": "₫", "decimals": 0, "per_usd_ref": 25300.0},
+    "GHS": {"symbol": "GH₵", "decimals": 2, "per_usd_ref": 15.5},
+    "EGP": {"symbol": "E£", "decimals": 2, "per_usd_ref": 49.0},
+    "COP": {"symbol": "COL$", "decimals": 0, "per_usd_ref": 4300.0},
+    "TZS": {"symbol": "TSh", "decimals": 0, "per_usd_ref": 2650.0},
+    "UGX": {"symbol": "USh", "decimals": 0, "per_usd_ref": 3680.0},
+    "JPY": {"symbol": "¥", "decimals": 0, "per_usd_ref": 153.0},
+    "KRW": {"symbol": "₩", "decimals": 0, "per_usd_ref": 1390.0},
+}
+
+
+def normalize_currency(currency: str | None) -> str:
+    """Validate and normalize an ISO-4217 currency code (defaults to 'USD')."""
+    if currency is None or not str(currency).strip():
+        return "USD"
+    code = str(currency).strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", code):
+        raise ValueError(f"Invalid ISO-4217 currency code: {currency!r}")
+    return code
+
+
+def currency_symbol(currency: str | None) -> str:
+    code = normalize_currency(currency)
+    spec = CURRENCY_SPECS.get(code)
+    return str(spec["symbol"]) if spec else f"{code} "
+
+
+def currency_decimals(currency: str | None) -> int:
+    code = normalize_currency(currency)
+    spec = CURRENCY_SPECS.get(code)
+    return int(spec["decimals"]) if spec else 2
+
+
+def round_money(amount: float, currency: str | None = "USD") -> float:
+    decimals = currency_decimals(currency)
+    val = round(float(amount), decimals)
+    return float(int(val)) if decimals == 0 else val
+
+
+def format_money(amount: float, currency: str | None = "USD") -> str:
+    """Format a monetary amount in local currency without converting to USD."""
+    code = normalize_currency(currency)
+    sym = currency_symbol(code)
+    decimals = currency_decimals(code)
+    rounded = round_money(amount, code)
+    sign = "-" if rounded < 0 else ""
+    abs_val = abs(rounded)
+    if decimals == 0:
+        num_str = f"{int(round(abs_val)):,}"
+    else:
+        num_str = f"{abs_val:,.{decimals}f}"
+    sep = "" if sym in ("$", "€", "£", "¥", "₩", "₹", "₦", "₱", "₫", "R") else " "
+    return f"{sign}{sym.rstrip()}{sep}{num_str}"
+
+
+def resolve_amount(primary: Any, alias: Any = None) -> float | None:
+    """Pick the first provided numeric input between primary and currency-neutral alias."""
+    val = to_float(primary)
+    if val is not None:
+        return val
+    return to_float(alias)
+
+
+def usd_equivalent_floor(usd_floor: float, currency: str | None = "USD") -> float | None:
+    """Approximate local-currency reference floor from USD baseline, or None if currency rate is unknown."""
+    code = normalize_currency(currency)
+    spec = CURRENCY_SPECS.get(code)
+    if not spec:
+        return None
+    return round_money(float(usd_floor) * float(spec["per_usd_ref"]), code)
+
+
+# ---------------------------------------------------------------------------
 # Restricted Safe YAML Parser (pure stdlib, rejects tags/anchors/aliases)
 # ---------------------------------------------------------------------------
 

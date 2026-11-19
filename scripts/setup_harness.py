@@ -81,7 +81,8 @@ Always use Python Code Interpreter (never mental math) for every number:
 - `creative_fatigue`: flag ads with `frequency >= 3.2` and `ctr_decay_from_peak_pct >= 20%` (or `cpa_inflation_pct >= 30%`) for 0-3s hook rotation without resetting targeting
 
 ## 3. Channel Coverage & Creative Studio Rules
-- **Paid & Organic Search:** Cross-check Google Ads vs. Search Console. Suppress paid brand/exact queries where organic rank <= 2 and competitor impression share < 5%. Seed SEO/GEO pages from converting paid terms (`conversions >= 3`, `CPA <= allowable_cac_usd`).
+- **Paid & Organic Search:** Cross-check Google Ads vs. Search Console. Suppress paid brand/exact queries where organic rank <= 2 and competitor impression share < 5%. Seed SEO/GEO pages from converting paid terms (`conversions >= 3`, `CPA <= allowable_cac`).
+- **Offline, Low-Connectivity & Local-Currency Entrepreneurship:** Accept any ISO-4217 `currency` (`KES`, `IDR`, `MXN`, `NGN`, `INR`, `USD`, etc.) via `currency=`/`--currency` without forcing USD conversion. For `offline-local-channels` (WhatsApp Business broadcasts, GSM-7 SMS, community FM radio, print flyers, neighborhood bulletin boards): enforce GSM-7 ASCII SMS (`<=160` chars/segment; reject curly quotes/emojis that trigger 70-char UCS-2), include `Reply STOP` opt-out + cash/mobile-money CTA, repeat radio phone numbers >=2x, and keep 2G order pages `<=150 KB`.
 - **Instagram, Facebook, LinkedIn, X, Reddit, Display & Native Ads:**
   - Respect `visual-dna.json` aspect ratios: `9:16` (`1080x1920` IG/FB Reels & Stories), `4:5` (`1080x1350` IG/FB/LinkedIn portrait feed), `1.91:1` (`1200x628` Display/Native), and IAB banners (`300x250`, `728x90`, `300x600`, `320x50`, `160x600`).
   - Specify whether each visual uses **AI image generation** (exact prompt + negative constraints), **founder photo shoot** (shot list), or **product UI capture**.
@@ -197,6 +198,20 @@ def generate_host_configs(
             encoding="utf-8",
         )
         written.append(str(local_env))
+
+        local_7b_env = out_dir / "env.local-7b-offline.example"
+        local_7b_env.write_text(
+            "# FreeCMO — Offline Low-RAM 7B Local Preset (Ollama qwen2.5:7b + local-entrepreneur pack — $0 cloud fees)\n"
+            "CMO_LLM_PROVIDER=ollama-7b\n"
+            "OLLAMA_BASE_URL=http://127.0.0.1:11434/v1\n"
+            "OLLAMA_MODEL=qwen2.5:7b\n"
+            "CMO_FAST_MODEL=qwen2.5:7b\n"
+            "CMO_WORKER_MODEL=qwen2.5:7b\n"
+            "CMO_ORCHESTRATOR_MODEL=qwen2.5:7b\n"
+            "CMO_MULTIMODAL_MODEL=llava:7b\n",
+            encoding="utf-8",
+        )
+        written.append(str(local_7b_env))
 
     if "gemini-hydrogen" in targets:
         hyd_env = out_dir / "env.gemini-hydrogen.example"
